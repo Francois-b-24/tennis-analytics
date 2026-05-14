@@ -92,6 +92,40 @@ st.caption(
     f"Ratings calculés sur {top_n} joueurs {circuit} — surface de référence : **{surface_choice}**"
 )
 
+with st.expander("ℹ️ Qu'est-ce que le rating Elo ?"):
+    st.markdown(
+        """
+        Le **rating Elo** est un système de notation inventé par le physicien Arpad Elo
+        (initialement pour les échecs) puis adapté au tennis. Il attribue à chaque joueur
+        un score numérique reflétant son **niveau actuel** : plus le score est élevé, plus
+        le joueur est fort.
+
+        **Principes du modèle utilisé ici :**
+
+        - 🎯 **Base de départ : 1500 points** pour tout nouveau joueur.
+        - ⚖️ **Mise à jour après chaque match** : le vainqueur gagne des points, le perdant
+          en perd. L'ampleur du transfert dépend de l'écart attendu entre les deux joueurs
+          *avant* la rencontre.
+        - 📈 **Battre un favori rapporte plus de points** que battre un outsider — et inversement.
+        - 🎾 **Quatre ratings par joueur** : Global, Dur, Terre battue, Gazon. Les ratings
+          surface capturent la spécialisation (ex : Nadal sur terre).
+        - 🔄 **Facteur K adaptatif** : 40 pour les joueurs débutants (< 30 matchs), 20 entre
+          30 et 100 matchs, 10 ensuite. Cela stabilise les ratings des vétérans.
+        - 🏆 **Best-of-5 majoré** : les matchs en 3 sets gagnants pèsent 1.1× plus.
+        - 💤 **Décroissance d'inactivité** : après 6 mois sans match, le rating glisse
+          progressivement vers 1500 (modèle exponentiel).
+
+        **Lecture rapide :**
+        - **2200+** : élite mondiale (Top 5)
+        - **2000–2200** : Top 20
+        - **1800–2000** : circuit professionnel
+        - **1500–1800** : joueurs en développement
+
+        Notre Elo est **calculé maison** depuis 2010 ; il s'inspire des approches publiques
+        (FiveThirtyEight, Tennis Abstract) sans en reproduire un modèle propriétaire.
+        """
+    )
+
 df = _top_elo(str(_ROOT), circuit, surface_col, top_n)
 
 if df.empty:
