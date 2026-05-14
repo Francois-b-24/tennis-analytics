@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.5.5"
+
+      - name: Configurer Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
+
+      - name: Installer le projet (dev)
+        run: uv sync --all-extras --python ${{ matrix.python-version }}
+
+      - name: Ruff
+        run: uv run ruff check src app tests
+
+      - name: Black
+        run: uv run black --check src app tests
+
+      - name: Pytest + couverture
+        run: |
+          uv run pytest tests/ \
+            --cov=ingestion --cov=transformation --cov=ratings --cov=modeling \
+            --cov=analytics --cov=db \
+            --cov-report=term-missing --cov-report=xml
+
+      - name: Vérifier la taille des parquets versionnés
+        env:
+          MAX_PARQUET_BYTES: ${{ vars.MAX_PARQUET_BYTES }}
+        run: |
+          uv run python - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path("data/processed")
+          raw = os.environ.get("MAX_PARQUET_BYTES") or "100000000"
+          limit = int(raw)
+          failures = []
+          if root.exists():
+              for p in root.glob("*.parquet"):
+                  sz = p.stat().st_size
+                  if sz > limit:
+                      failures.append(f"{p}: {sz} octets (> {limit})")
+          if failures:
+              print("Fichiers trop volumineux :")
+              print("\n".join(failures))
+              raise SystemExit(1)
+          print("Contrôle des tailles parquet : OK")
+          PY
+
+      - name: Téléverser coverage.xml
+        uses: actions/upload-artifact@v4
+        if: matrix.python-version == '3.11'
+        with:
+          name: coverage-xml
+          path: coverage.xml

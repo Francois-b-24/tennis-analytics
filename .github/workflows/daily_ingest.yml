@@ -1,0 +1,62 @@
+name: Ingestion quotidienne
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.5.5"
+
+      - name: Configurer Python
+        run: uv python install 3.12
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-ingest-${{ hashFiles('pyproject.toml') }}
+
+      - name: Installer le projet
+        run: uv sync --all-extras --python 3.12
+
+      - name: Lancer l'ingestion et les transformations
+        env:
+          ROOT_PATH: ${{ github.workspace }}
+        run: uv run tennis-ingest
+
+      - name: Recalculer les Elo et le modèle (artefacts)
+        env:
+          ROOT_PATH: ${{ github.workspace }}
+        run: |
+          uv run python -m transformation.build_elo
+          uv run python -m transformation.build_model
+
+      - name: Créer une pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "data: mise à jour des parquets"
+          title: "data: mise à jour quotidienne des parquets"
+          body: |
+            Mise à jour automatique des jeux de données traités.
+
+            - Déclenché par : `${{ github.workflow }}`
+            - Révision : `${{ github.sha }}`
+
+            Merci de vérifier les différences de volume et de lancer les tests localement si besoin.
+          branch: data/update-${{ github.run_id }}
+          delete-branch: true

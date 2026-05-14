@@ -1,0 +1,32 @@
+# Tennis Analytics — règles Cursor
+
+## Langue
+- Interface Streamlit (`app/`) : textes, labels, messages, tooltips en **français**.
+- Docstrings et commentaires Python : **français** (style Google).
+- Noms de variables, fonctions, modules : **anglais** (PEP 8).
+- Noms de joueurs : orthographe officielle.
+
+## Visualisation
+- Dans `app/` : **Plotly uniquement** (`plotly.express` ou `plotly.graph_objects`). Pas de matplotlib ni altair.
+- Toujours `st.plotly_chart(fig, use_container_width=True)` pour les figures.
+- Thème centralisé : `app/components/plotly_theme.py` + `apply_tennis_theme(fig)`.
+
+## Code Python
+- Python 3.11+, **type hints** sur les API publiques ; éviter `Any` sauf justification.
+- Pas de `print` : utiliser **loguru** (messages en français).
+- Chemins : **pathlib** + variable d'environnement **ROOT_PATH** (jamais de chemins absolus codés en dur).
+- Toute fonction de calcul (Elo, features, métriques) : couverte par **pytest**.
+
+## Données
+- Stockage analytique : **DuckDB** + **parquet** sous `data/`. Pas de PostgreSQL/SQLite pour l'app.
+- Préférer des **vues SQL** (DuckDB) aux gros allers-retours pandas.
+
+## Streamlit
+- `st.cache_data` pour les lectures DuckDB et agrégations coûteuses.
+
+## Git
+- Commits : **Conventional Commits en français** (ex. `feat: ajoute le filtre surface`).
+- Branches : `main`, `develop`, `feature/...`, `fix/...`.
+
+## Portée
+- Ne pas refactorer hors demande ; respecter l'architecture dossiers `src/`, `app/`, `data/`, `tests/`.
