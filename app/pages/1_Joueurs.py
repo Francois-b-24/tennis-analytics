@@ -19,6 +19,8 @@ if str(_APP_DIR) not in sys.path:
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+import math
+
 import duckdb
 import pandas as pd
 import plotly.graph_objects as go
@@ -211,12 +213,20 @@ career = _career_stats(str(_ROOT), player_id)
 
 if not career.empty:
     r = career.iloc[0]
+
+    def _safe_float(v: object) -> float | None:
+        try:
+            f = float(v)
+            return None if math.isnan(f) else f
+        except (TypeError, ValueError):
+            return None
+
     total = int(r["total"])
     wins = int(r["wins"])
-    win_pct = float(r["win_pct"] or 0)
-    avg_aces = r["avg_aces"]
-    avg_df = r["avg_df"]
-    avg_dur = r["avg_duration"]
+    win_pct = _safe_float(r["win_pct"]) or 0.0
+    avg_aces = _safe_float(r["avg_aces"])
+    avg_df = _safe_float(r["avg_df"])
+    avg_dur = _safe_float(r["avg_duration"])
     tournaments = int(r["tournaments"])
 
     mc1, mc2, mc3, mc4 = st.columns(4)
@@ -225,9 +235,9 @@ if not career.empty:
     with mc2:
         st.metric("Tournois joués", str(tournaments))
     with mc3:
-        st.metric("Aces / match (moy.)", f"{avg_aces:.1f}" if avg_aces else "—")
+        st.metric("Aces / match (moy.)", f"{avg_aces:.1f}" if avg_aces is not None else "—")
     with mc4:
-        st.metric("Durée moy. (min)", f"{int(avg_dur)}" if avg_dur else "—")
+        st.metric("Durée moy. (min)", f"{int(avg_dur)}" if avg_dur is not None else "—")
 
 # Stats par surface
 surface_df = _surface_stats(str(_ROOT), player_id)
