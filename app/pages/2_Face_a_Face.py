@@ -34,6 +34,28 @@ from components.widgets import (
 from db.duckdb_session import create_connection
 
 
+@st.cache_data(show_spinner=False)
+def _player_options_circuit(_root: str, circuit: str) -> pd.DataFrame:
+    conn = _connection()
+    if circuit == "Tous":
+        return load_player_options(conn)
+    try:
+        df = conn.execute(
+            """
+            SELECT pn.player_id, pn.full_name
+            FROM v_player_names pn
+            JOIN v_players p USING (player_id)
+            WHERE p.circuit = ?
+              AND TRIM(pn.full_name) <> ''
+            ORDER BY pn.full_name
+            """,
+            [circuit],
+        ).df()
+        return df.drop_duplicates(subset=["full_name"])
+    except duckdb.Error:
+        return load_player_options(conn)
+
+
 @st.cache_resource(show_spinner=False)
 def _connection() -> duckdb.DuckDBPyConnection:
     return create_connection(_ROOT)
@@ -221,12 +243,15 @@ def _favorite_message(
     )
 
 
-st.set_page_config(page_title="Face à Face", layout="wide")
+st.set_page_config(page_title="Face à Face — Tennis Analytics", layout="wide")
 st.title("Face à Face (H2H)")
 
+circuit = st.sidebar.selectbox("Circuit", ["ATP", "WTA", "Tous"], key="h2h_circuit")
+
 connection = _connection()
-players = load_player_options(connection)
+players = _player_options_circuit(str(_ROOT), circuit)
 if players.empty:
+    st.warning("Aucun joueur disponible pour ce circuit.")
     st.stop()
 
 col_left, col_right = st.columns(2)

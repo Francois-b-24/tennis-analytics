@@ -1,4 +1,4 @@
-"""Point d'entrée Streamlit : accueil et métriques globales."""
+"""Point d'entrée Streamlit : accueil, métriques globales et navigation."""
 
 from __future__ import annotations
 
@@ -11,13 +11,24 @@ import streamlit as st
 from dotenv import load_dotenv
 
 _ROOT = Path(__file__).resolve().parents[1]
+_APP_DIR = Path(__file__).resolve().parent
 load_dotenv(_ROOT / ".env")
 os.environ.setdefault("ROOT_PATH", str(_ROOT))
 
+if str(_APP_DIR) not in sys.path:
+    sys.path.insert(0, str(_APP_DIR))
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from components.widgets import circuit_filter_sql, format_date_dd_mm_yyyy, safe_scalar
 from db.duckdb_session import create_connection
+
+st.set_page_config(
+    page_title="Tennis Analytics",
+    page_icon="🎾",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 
 @st.cache_resource(show_spinner=False)
@@ -25,59 +36,136 @@ def _connection() -> duckdb.DuckDBPyConnection:
     return create_connection(_ROOT)
 
 
-def _safe_scalar(connection: duckdb.DuckDBPyConnection, sql: str) -> int | float | None:
-    try:
-        value = connection.execute(sql).fetchone()[0]
-    except duckdb.Error:
-        return None
-    return value
+connection = _connection()
 
+# ── Sidebar ──────────────────────────────────────────────────────────────────
+circuit = st.sidebar.selectbox("Circuit", ["Tous", "ATP", "WTA"], key="home_circuit")
+cf = circuit_filter_sql(circuit)
 
-st.set_page_config(page_title="Tennis Analytics", layout="wide")
-st.title("Tennis Analytics Platform")
+# ── Hero ─────────────────────────────────────────────────────────────────────
 st.markdown(
     """
-    **Plateforme personnelle d'analytics tennis (ATP/WTA)** : statistiques descriptives,
-    ratings Elo maison, modèles de prédiction et insights tactiques (MVP).
-    """
+    <h1 style='margin-bottom:0'>🎾 Tennis Analytics</h1>
+    <p style='color:#666;font-size:1.1rem;margin-top:4px'>
+        Plateforme personnelle d'analyse ATP/WTA — statistiques, ratings Elo et prédictions ML
+    </p>
+    """,
+    unsafe_allow_html=True,
 )
+st.divider()
 
-hero = st.container()
-with hero:
-    st.markdown("### Bienvenue")
-    st.write(
-        "Explorez les joueurs, affrontements direct (H2H), tournois, classements Elo, "
-        "prédictions et insights depuis le menu des pages."
-    )
+# ── KPIs row 1 ───────────────────────────────────────────────────────────────
+col1, col2, col3 = st.columns(3)
 
-connection = _connection()
-col_a, col_b, col_c = st.columns(3)
-with col_a:
-    matches_count = int(_safe_scalar(connection, "SELECT COUNT(*) FROM v_matches;") or 0)
-    st.metric("Matchs indexés", f"{matches_count:,}".replace(",", " "))
-with col_b:
-    players_count = int(
-        _safe_scalar(connection, "SELECT COUNT(DISTINCT player_id) FROM v_players;") or 0
+total_matches = int(
+    safe_scalar(connection, f"SELECT COUNT(*) FROM v_matches WHERE 1=1 {cf}", default=0) or 0
+)
+total_players = int(
+    safe_scalar(
+        connection,
+        f"SELECT COUNT(DISTINCT player_id) FROM v_players p WHERE 1=1 {cf.replace('circuit', 'p.circuit')}",
+        default=0,
     )
-    if players_count == 0:
-        players_count = int(
-            _safe_scalar(connection, "SELECT COUNT(DISTINCT winner_id) FROM v_matches;") or 0
+    or 0
+)
+if total_players == 0:
+    total_players = int(
+        safe_scalar(
+            connection,
+            f"SELECT COUNT(DISTINCT winner_id) FROM v_matches WHERE 1=1 {cf}",
+            default=0,
         )
-    st.metric("Joueurs (approx.)", f"{players_count:,}".replace(",", " "))
-with col_c:
-    last_date = _safe_scalar(connection, "SELECT MAX(tourney_date) FROM v_matches;")
-    st.metric("Dernière date de match", str(last_date or "—"))
-
-st.info(
-    "Astuce : si les métriques sont vides, lancez `uv run tennis-ingest` "
-    "puis `uv run python -m transformation.build_elo`.",
+        or 0
+    )
+total_tournois = int(
+    safe_scalar(
+        connection,
+        f"SELECT COUNT(DISTINCT tourney_name) FROM v_matches WHERE 1=1 {cf}",
+        default=0,
+    )
+    or 0
 )
+
+with col1:
+    st.metric("Matchs indexés", f"{total_matches:,}".replace(",", " "))
+with col2:
+    st.metric("Joueurs", f"{total_players:,}".replace(",", " "))
+with col3:
+    st.metric("Tournois couverts", f"{total_tournois:,}".replace(",", " "))
+
+# ── KPIs row 2 ───────────────────────────────────────────────────────────────
+col4, col5, col6 = st.columns(3)
+
+atp_matches = int(
+    safe_scalar(connection, "SELECT COUNT(*) FROM v_matches WHERE circuit = 'ATP'", default=0) or 0
+)
+wta_matches = int(
+    safe_scalar(connection, "SELECT COUNT(*) FROM v_matches WHERE circuit = 'WTA'", default=0) or 0
+)
+date_range = connection.execute(
+    "SELECT MIN(tourney_date), MAX(tourney_date) FROM v_matches"
+).fetchone()
+min_date = format_date_dd_mm_yyyy(date_range[0]) if date_range else "—"
+max_date = format_date_dd_mm_yyyy(date_range[1]) if date_range else "—"
+
+with col4:
+    st.metric("Matchs ATP", f"{atp_matches:,}".replace(",", " "))
+with col5:
+    st.metric("Matchs WTA", f"{wta_matches:,}".replace(",", " "))
+with col6:
+    st.metric("Période couverte", f"{min_date} → {max_date}")
 
 st.divider()
-st.markdown("### Pages disponibles")
-st.page_link("pages/1_Joueurs.py", label="Joueurs")
-st.page_link("pages/2_Face_a_Face.py", label="Face à Face")
-st.page_link("pages/3_Tournois.py", label="Tournois")
-st.page_link("pages/4_Classements_Elo.py", label="Classements Elo")
-st.page_link("pages/5_Predictions.py", label="Prédictions")
-st.page_link("pages/6_Insights.py", label="Insights")
+
+# ── Navigation cards ──────────────────────────────────────────────────────────
+st.markdown("### Explorer l'application")
+
+PAGES = [
+    {
+        "path": "pages/1_Joueurs.py",
+        "title": "Joueurs",
+        "icon": "👤",
+        "desc": "Fiche joueur, stats carrière par surface, évolution Elo dans le temps et derniers matchs.",
+    },
+    {
+        "path": "pages/2_Face_a_Face.py",
+        "title": "Face à Face",
+        "icon": "⚔️",
+        "desc": "Bilan H2H, radar de style de jeu et favori Elo pour n'importe quelle paire de joueurs.",
+    },
+    {
+        "path": "pages/3_Tournois.py",
+        "title": "Tournois",
+        "icon": "🏆",
+        "desc": "Palmarès historique, top vainqueurs et durée des matchs pour chaque tournoi.",
+    },
+    {
+        "path": "pages/4_Classements_Elo.py",
+        "title": "Classements Elo",
+        "icon": "📊",
+        "desc": "Top N joueurs par rating Elo global ou par surface, avec comparaison multi-surface.",
+    },
+    {
+        "path": "pages/5_Predictions.py",
+        "title": "Prédictions",
+        "icon": "🤖",
+        "desc": "Probabilité de victoire ML (régression logistique calibrée) pour deux joueurs sur une surface.",
+    },
+    {
+        "path": "pages/6_Insights.py",
+        "title": "Insights",
+        "icon": "💡",
+        "desc": "Tendances long-terme : aces, double-fautes, durée des matchs et comparaison ATP/WTA.",
+    },
+]
+
+row1 = st.columns(3)
+row2 = st.columns(3)
+
+for i, page in enumerate(PAGES):
+    col = row1[i] if i < 3 else row2[i - 3]
+    with col:
+        with st.container(border=True):
+            st.markdown(f"### {page['icon']} {page['title']}")
+            st.caption(page["desc"])
+            st.page_link(page["path"], label=f"Ouvrir {page['title']} →")

@@ -35,7 +35,6 @@ ENV/
 
 # uv
 .uv/
-uv.lock
 
 # IDE
 .idea/
@@ -47,15 +46,11 @@ uv.lock
 .env
 .env.local
 
-# Données brutes / volumineuses
+# Données brutes / volumineuses (raw et interim gitignorés — seul processed est versionné)
 data/raw/*.csv
 data/interim/*.parquet
-data/processed/*.parquet
-data/processed/models/*.joblib
 !data/raw/.gitkeep
 !data/interim/.gitkeep
-!data/processed/.gitkeep
-!data/processed/models/.gitkeep
 
 # DuckDB local
 *.duckdb

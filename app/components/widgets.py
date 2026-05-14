@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import duckdb
@@ -71,3 +72,46 @@ def query_dataframe(
     if params:
         return connection.execute(sql, params).df()
     return connection.execute(sql).df()
+
+
+def safe_scalar(
+    connection: duckdb.DuckDBPyConnection,
+    sql: str,
+    params: list[Any] | None = None,
+    default: Any = None,
+) -> Any:
+    """Exécute une requête scalaire et retourne `default` en cas d'erreur."""
+    try:
+        row = connection.execute(sql, params or []).fetchone()
+        return row[0] if row else default
+    except duckdb.Error:
+        return default
+
+
+def format_elo(value: float | None) -> str:
+    """Formate un rating Elo en entier arrondi (ex : 1847)."""
+    if value is None:
+        return "—"
+    return f"{int(round(value))}"
+
+
+def circuit_filter_sql(circuit: str) -> str:
+    """Génère une clause SQL WHERE pour filtrer par circuit (ATP/WTA).
+
+    Ne jamais interpoler de valeurs issues directement de l'utilisateur sans
+    passer par cette fonction — seules 'ATP' et 'WTA' sont acceptées.
+    """
+    if circuit in ("ATP", "WTA"):
+        return f"AND circuit = '{circuit}'"
+    return ""
+
+
+@st.cache_resource(show_spinner=False)
+def load_model_bundle(model_path: str) -> dict | None:
+    """Charge le bundle joblib {'model': ..., 'features': [...]}."""
+    import joblib
+
+    p = Path(model_path)
+    if not p.exists():
+        return None
+    return joblib.load(str(p))

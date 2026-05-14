@@ -49,6 +49,7 @@ def create_connection(project_root: Path | None = None) -> duckdb.DuckDBPyConnec
     _register_parquet_view(connection, "v_matches", processed / "matches.parquet")
     _register_parquet_view(connection, "v_rankings", processed / "rankings.parquet")
     _register_parquet_view(connection, "v_elo_latest", processed / "elo_latest.parquet")
+    _register_parquet_view(connection, "v_elo_history", processed / "elo_history.parquet")
     _register_parquet_view(
         connection, "v_match_elo_context", processed / "match_elo_context.parquet"
     )
