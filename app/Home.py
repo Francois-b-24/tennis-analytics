@@ -117,11 +117,78 @@ with col6:
 
 st.divider()
 
-page_info(
-    "Bienvenue sur cette plateforme d'analyse tennis personnelle. "
-    "Explorez les statistiques de carrière des joueurs ATP et WTA depuis 2010, "
-    "comparez-les en face à face, consultez les classements Elo par surface "
-    "et simulez des probabilités de match grâce à un modèle ML calibré."
+st.markdown(
+    """
+    <style>
+    .elo-tooltip {
+        position: relative;
+        display: inline-block;
+        color: #3A7D44;
+        font-weight: 600;
+        border-bottom: 1px dashed #3A7D44;
+        cursor: help;
+    }
+    .elo-tooltip .elo-tip {
+        visibility: hidden;
+        opacity: 0;
+        width: 300px;
+        background: #1e2d24;
+        color: #f0f7f2;
+        font-size: 0.82rem;
+        line-height: 1.6;
+        border-radius: 8px;
+        padding: 12px 14px;
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+        transition: opacity 0.2s ease;
+        z-index: 9999;
+        pointer-events: none;
+    }
+    .elo-tooltip .elo-tip::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 6px solid transparent;
+        border-top-color: #1e2d24;
+    }
+    .elo-tooltip:hover .elo-tip {
+        visibility: visible;
+        opacity: 1;
+    }
+    .info-band {
+        background: linear-gradient(135deg, #f4f9f5 0%, #eaf3ec 100%);
+        border-left: 4px solid #3A7D44;
+        border-radius: 0 8px 8px 0;
+        padding: 12px 16px;
+        margin-bottom: 16px;
+        color: #3a3a3a;
+        font-size: 0.92rem;
+        line-height: 1.6;
+    }
+    </style>
+
+    <div class="info-band">
+    🎾&nbsp; Bienvenue sur cette plateforme d'analyse tennis personnelle.
+    Explorez les statistiques de carrière des joueurs ATP et WTA depuis 2010,
+    comparez-les en face à face, consultez les classements
+    <span class="elo-tooltip">Elo
+        <span class="elo-tip">
+            <strong>Rating Elo</strong><br>
+            Système de notation qui mesure le niveau d'un joueur match après match.
+            Battre un adversaire fort rapporte plus de points que battre un outsider.
+            Chaque joueur dispose de 4 ratings : Global, Dur, Terre battue et Gazon.<br><br>
+            <em>Repères : 1 500 = débutant · 1 800 = pro · 2 000 = Top 20 · 2 200+ = élite</em>
+        </span>
+    </span>
+    par surface et simulez des probabilités de match grâce à un modèle ML calibré.
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 # ── Navigation cards ──────────────────────────────────────────────────────────
