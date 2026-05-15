@@ -44,20 +44,27 @@ def _connection() -> duckdb.DuckDBPyConnection:
     return create_connection(_ROOT)
 
 
+def _country_column_name(conn: duckdb.DuckDBPyConnection) -> str:
+    """Détecte le nom de la colonne pays dans v_players (schéma variable)."""
+    cols = conn.execute("DESCRIBE v_players").df()["column_name"].tolist()
+    if "ioc" in cols:
+        return "ioc"
+    if "country_code" in cols:
+        return "country_code"
+    return "NULL"  # fallback : pas de pays
+
+
 @st.cache_data(show_spinner=False)
 def _top20_per_circuit(_root: str, circuit: str) -> pd.DataFrame:
-    """Top 20 joueurs d'un circuit selon Elo global, avec leurs ratings par surface.
-
-    Utilise ROW_NUMBER pour dédupliquer côté joueurs (plusieurs lignes peuvent
-    exister par player_id dans v_players quand un joueur a joué sur les 2 circuits).
-    """
-    return _connection().execute(
-        """
+    """Top 20 joueurs d'un circuit selon Elo global, avec leurs ratings par surface."""
+    conn = _connection()
+    country_col = _country_column_name(conn)
+    sql = f"""
         WITH player_unique AS (
             SELECT player_id,
                    ANY_VALUE(name_first) AS name_first,
                    ANY_VALUE(name_last) AS name_last,
-                   ANY_VALUE(ioc) AS ioc
+                   ANY_VALUE({country_col}) AS pays_raw
             FROM v_players
             WHERE circuit = ?
             GROUP BY player_id
@@ -66,7 +73,7 @@ def _top20_per_circuit(_root: str, circuit: str) -> pd.DataFrame:
             ROW_NUMBER() OVER (ORDER BY e.elo_global DESC NULLS LAST) AS rang,
             e.player_id,
             TRIM(CONCAT(COALESCE(p.name_first, ''), ' ', COALESCE(p.name_last, ''))) AS joueur,
-            COALESCE(p.ioc, '—') AS pays,
+            COALESCE(NULLIF(TRIM(CAST(p.pays_raw AS VARCHAR)), ''), '—') AS pays,
             ROUND(e.elo_global, 0) AS elo_global,
             ROUND(e.elo_hard,   0) AS elo_dur,
             ROUND(e.elo_clay,   0) AS elo_terre,
@@ -78,9 +85,8 @@ def _top20_per_circuit(_root: str, circuit: str) -> pd.DataFrame:
           AND TRIM(CONCAT(COALESCE(p.name_first, ''), ' ', COALESCE(p.name_last, ''))) <> ''
         ORDER BY e.elo_global DESC NULLS LAST
         LIMIT 20
-        """,
-        [circuit],
-    ).df()
+    """
+    return conn.execute(sql, [circuit]).df()
 
 
 @st.cache_data(show_spinner=False)
