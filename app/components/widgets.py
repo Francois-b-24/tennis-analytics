@@ -239,10 +239,20 @@ def safe_scalar(
 
 
 def format_elo(value: float | None) -> str:
-    """Formate un rating Elo en entier arrondi (ex : 1847)."""
+    """Formate un rating Elo en entier arrondi (ex : 1847).
+
+    Tolère les NaN, None et valeurs non numériques en retournant '—'.
+    """
     if value is None:
         return "—"
-    return f"{int(round(value))}"
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    import math
+    if math.isnan(f):
+        return "—"
+    return f"{int(round(f))}"
 
 
 def circuit_filter_sql(circuit: str) -> str:
