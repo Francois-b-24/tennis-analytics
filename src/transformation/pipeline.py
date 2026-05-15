@@ -61,6 +61,13 @@ def build_processed_tables(project_root: Path) -> None:
         + "_"
         + matches["loser_id"].astype(str)
     )
+
+    # Les colonnes *_seed contiennent des valeurs mixtes (entiers + 'WC', 'Q', 'LL'…)
+    # PyArrow ne peut pas les convertir en double — on force en numérique, le reste → NaN
+    for col in ("winner_seed", "loser_seed"):
+        if col in matches.columns:
+            matches[col] = pd.to_numeric(matches[col], errors="coerce")
+
     matches.to_parquet(processed / "matches.parquet", index=False)
     logger.info("Table `matches` écrite ({} lignes).", len(matches))
 
