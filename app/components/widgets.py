@@ -124,10 +124,29 @@ def inject_global_css() -> None:
                 min-width: 0 !important;
             }
 
-            /* Réduit le padding latéral de la page */
-            .main .block-container {
-                padding-left: 1rem !important;
-                padding-right: 1rem !important;
+            /* Réduit le padding latéral de la page (selectors multiples pour couvrir toutes versions Streamlit) */
+            .main .block-container,
+            section.main > div.block-container,
+            [data-testid="stAppViewContainer"] .main .block-container,
+            [data-testid="stMain"] .block-container {
+                padding-left: 0.75rem !important;
+                padding-right: 0.75rem !important;
+                max-width: 100% !important;
+            }
+
+            /* Pas de marge sur le body / app */
+            body, [data-testid="stAppViewContainer"], .main {
+                padding-right: 0 !important;
+                margin-right: 0 !important;
+                overflow-x: hidden !important;
+            }
+
+            /* Conteneurs internes : pas de débordement à droite */
+            [data-testid="stHorizontalBlock"],
+            [data-testid="stVerticalBlock"] {
+                width: 100% !important;
+                max-width: 100% !important;
+                box-sizing: border-box !important;
             }
 
             /* Sidebar masquée par défaut sur mobile (repliée) */

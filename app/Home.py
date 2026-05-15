@@ -39,6 +39,24 @@ def _connection() -> duckdb.DuckDBPyConnection:
 
 connection = _connection()
 
+# ── Diagnostic : vérifier que les vues sont bien chargées ────────────────────
+try:
+    _check = connection.execute("SELECT COUNT(*) FROM v_matches").fetchone()
+    if not _check or _check[0] == 0:
+        st.error(
+            "⚠️ Aucune donnée chargée — la vue `v_matches` est vide ou absente. "
+            "Vérifiez que les fichiers `data/processed/*.parquet` sont bien présents "
+            "dans le déploiement."
+        )
+        st.stop()
+except Exception as e:
+    st.error(f"⚠️ Erreur de chargement des données : {e}")
+    st.info(
+        "Sur Streamlit Cloud, cliquez sur **Manage app → Reboot app** pour vider le cache "
+        "de connexion et recharger les parquets."
+    )
+    st.stop()
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 circuit = st.sidebar.selectbox("Circuit", ["Tous", "ATP", "WTA"], key="home_circuit")
 cf = circuit_filter_sql(circuit)
@@ -202,6 +220,7 @@ st.markdown(
             Battre un adversaire fort rapporte plus de points que battre un outsider.
             Chaque joueur dispose de 4 ratings : Global, Dur, Terre battue et Gazon.<br><br>
             <em>Repères : 1 500 = débutant · 1 800 = pro · 2 000 = Top 20 · 2 200+ = élite</em>
+            <br><br>📖 <em>Voir la page « Définition Elo » pour le document complet.</em>
         </span>
     </span>
     par surface et simulez des probabilités de match grâce à un modèle ML calibré.
@@ -250,13 +269,25 @@ PAGES = [
         "icon": "💡",
         "desc": "Tendances long-terme : aces, double-fautes, durée des matchs et comparaison ATP/WTA.",
     },
+    {
+        "path": "pages/7_Definition_Elo.py",
+        "title": "Définition Elo",
+        "icon": "📖",
+        "desc": "Document PDF de référence sur le système de rating Elo appliqué au tennis.",
+    },
 ]
 
 row1 = st.columns(3)
 row2 = st.columns(3)
+row3 = st.columns(3)
 
 for i, page in enumerate(PAGES):
-    col = row1[i] if i < 3 else row2[i - 3]
+    if i < 3:
+        col = row1[i]
+    elif i < 6:
+        col = row2[i - 3]
+    else:
+        col = row3[i - 6]
     with col:
         with st.container(border=True):
             st.markdown(f"### {page['icon']} {page['title']}")
