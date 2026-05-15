@@ -32,10 +32,11 @@ from components.plotly_theme import (
     TENNIS_LINE,
     apply_tennis_theme,
 )
-from components.widgets import circuit_filter_sql, page_info
+from components.widgets import circuit_filter_sql, inject_global_css, page_info
 from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Insights — Tennis Analytics", layout="wide")
+inject_global_css()
 
 
 @st.cache_resource(show_spinner=False)

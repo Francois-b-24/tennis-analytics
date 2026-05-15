@@ -31,10 +31,11 @@ from components.plotly_theme import (
     TENNIS_LINE,
     apply_tennis_theme,
 )
-from components.widgets import format_date_dd_mm_yyyy, page_info
+from components.widgets import format_date_dd_mm_yyyy, inject_global_css, page_info
 from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Tournois — Tennis Analytics", layout="wide")
+inject_global_css()
 
 SURF_COLORS = {"Hard": TENNIS_HARD, "Clay": TENNIS_CLAY, "Grass": TENNIS_GREEN}
 

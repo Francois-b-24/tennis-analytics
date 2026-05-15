@@ -33,10 +33,11 @@ from components.plotly_theme import (
     TENNIS_LINE,
     apply_tennis_theme,
 )
-from components.widgets import load_model_bundle, load_player_options, page_info, player_selectbox
+from components.widgets import inject_global_css, load_model_bundle, load_player_options, page_info, player_selectbox
 from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Prédictions — Tennis Analytics", layout="wide")
+inject_global_css()
 
 MODEL_PATH = str(_ROOT / "data" / "processed" / "models" / "logreg_calibrated.joblib")
 

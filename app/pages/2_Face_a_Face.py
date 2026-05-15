@@ -30,6 +30,7 @@ import streamlit as st
 from components.plotly_theme import apply_tennis_theme
 from components.widgets import (
     format_date_dd_mm_yyyy,
+    inject_global_css,
     load_player_options,
     page_info,
     player_selectbox,
@@ -247,6 +248,7 @@ def _favorite_message(
 
 
 st.set_page_config(page_title="Face à Face — Tennis Analytics", layout="wide")
+inject_global_css()
 st.title("Face à Face (H2H)")
 
 circuit = st.sidebar.selectbox("Circuit", ["ATP", "WTA", "Tous"], key="h2h_circuit")

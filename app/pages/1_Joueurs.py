@@ -33,10 +33,11 @@ from components.plotly_theme import (
     TENNIS_LINE,
     apply_tennis_theme,
 )
-from components.widgets import format_date_dd_mm_yyyy, format_elo, format_percent, page_info
+from components.widgets import format_date_dd_mm_yyyy, format_elo, format_percent, inject_global_css, page_info
 from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Joueurs — Tennis Analytics", layout="wide")
+inject_global_css()
 
 
 @st.cache_resource(show_spinner=False)

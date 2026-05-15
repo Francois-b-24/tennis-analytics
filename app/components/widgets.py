@@ -106,6 +106,78 @@ def circuit_filter_sql(circuit: str) -> str:
     return ""
 
 
+def inject_global_css() -> None:
+    """Injecte le CSS global responsive tennis (à appeler une fois par page)."""
+    st.markdown(
+        """
+        <style>
+        /* ── Colonnes Streamlit empilées sur mobile ─────────────────────── */
+        @media (max-width: 768px) {
+
+            /* Empile toutes les colonnes en vertical */
+            [data-testid="stHorizontalBlock"] {
+                flex-direction: column !important;
+            }
+            [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+                width: 100% !important;
+                flex: 1 1 100% !important;
+                min-width: 0 !important;
+            }
+
+            /* Réduit le padding latéral de la page */
+            .main .block-container {
+                padding-left: 1rem !important;
+                padding-right: 1rem !important;
+            }
+
+            /* Sidebar masquée par défaut sur mobile (repliée) */
+            [data-testid="stSidebar"] {
+                min-width: 0 !important;
+            }
+
+            /* Métriques : texte légèrement réduit */
+            [data-testid="stMetricValue"] {
+                font-size: 1.1rem !important;
+            }
+            [data-testid="stMetricLabel"] {
+                font-size: 0.78rem !important;
+            }
+
+            /* Dataframes scrollables horizontalement */
+            [data-testid="stDataFrame"] {
+                overflow-x: auto !important;
+            }
+
+            /* Titres réduits */
+            h1 { font-size: 1.6rem !important; }
+            h2 { font-size: 1.3rem !important; }
+            h3 { font-size: 1.1rem !important; }
+
+            /* Cards navigation home */
+            [data-testid="stVerticalBlock"] > div[data-testid="element-container"] > div {
+                margin-bottom: 0.5rem;
+            }
+        }
+
+        /* ── Tooltip Elo : reste dans le viewport sur mobile ───────────── */
+        @media (max-width: 500px) {
+            .elo-tooltip .elo-tip {
+                width: 85vw !important;
+                left: 0 !important;
+                transform: none !important;
+            }
+        }
+
+        /* ── Charts Plotly toujours 100% largeur ───────────────────────── */
+        .js-plotly-plot, .plotly {
+            max-width: 100% !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def page_info(text: str, icon: str = "🎾") -> None:
     """Affiche un encart descriptif soft au style tennis (vert discret)."""
     st.markdown(

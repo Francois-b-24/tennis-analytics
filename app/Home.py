@@ -20,15 +20,16 @@ if str(_APP_DIR) not in sys.path:
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from components.widgets import circuit_filter_sql, format_date_dd_mm_yyyy, page_info, safe_scalar
+from components.widgets import circuit_filter_sql, format_date_dd_mm_yyyy, inject_global_css, page_info, safe_scalar
 from db.duckdb_session import create_connection
 
 st.set_page_config(
     page_title="Tennis Analytics",
     page_icon="🎾",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
+inject_global_css()
 
 
 @st.cache_resource(show_spinner=False)

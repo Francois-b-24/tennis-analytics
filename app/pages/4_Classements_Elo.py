@@ -31,10 +31,11 @@ from components.plotly_theme import (
     TENNIS_LINE,
     apply_tennis_theme,
 )
-from components.widgets import format_elo, page_info
+from components.widgets import format_elo, inject_global_css, page_info
 from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Classements Elo — Tennis Analytics", layout="wide")
+inject_global_css()
 
 SURFACE_MAP = {
     "Global": "elo_global",
@@ -182,7 +183,7 @@ fig_bar.update_layout(
     xaxis_title=f"Rating Elo ({surface_choice})",
     yaxis_title=None,
     height=max(500, len(chart_df) * 22),
-    margin=dict(l=180),
+    margin=dict(l=10, r=10),
 )
 apply_tennis_theme(fig_bar)
 st.plotly_chart(fig_bar, use_container_width=True)
