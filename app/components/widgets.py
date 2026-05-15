@@ -111,37 +111,69 @@ def inject_global_css() -> None:
     st.markdown(
         """
         <style>
-        /* ── Colonnes Streamlit empilées sur mobile ─────────────────────── */
+        /* ── Anti-débordement horizontal global ─────────────────────────── */
+        html, body, [data-testid="stAppViewContainer"], .main, .stApp {
+            overflow-x: hidden !important;
+            max-width: 100vw !important;
+        }
+
+        /* ── Charts Plotly toujours 100% largeur ───────────────────────── */
+        .js-plotly-plot, .plotly {
+            max-width: 100% !important;
+        }
+
+        /* ── Encart info-band : largeur sûre ────────────────────────────── */
+        .info-band {
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+            word-wrap: break-word !important;
+            overflow-wrap: break-word !important;
+        }
+
+        /* ── Tableaux markdown : scroll horizontal au besoin ────────────── */
+        .main table {
+            display: block !important;
+            overflow-x: auto !important;
+            max-width: 100% !important;
+            -webkit-overflow-scrolling: touch !important;
+        }
+
+        /* ── Blocs de code : pas de débordement ─────────────────────────── */
+        .main pre, .main code {
+            white-space: pre-wrap !important;
+            word-wrap: break-word !important;
+            overflow-wrap: break-word !important;
+            max-width: 100% !important;
+        }
+
+        /* ── Mobile (< 768px) ───────────────────────────────────────────── */
         @media (max-width: 768px) {
 
             /* Empile toutes les colonnes en vertical */
             [data-testid="stHorizontalBlock"] {
                 flex-direction: column !important;
+                gap: 0.5rem !important;
             }
             [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
                 width: 100% !important;
                 flex: 1 1 100% !important;
                 min-width: 0 !important;
+                max-width: 100% !important;
             }
 
-            /* Réduit le padding latéral de la page (selectors multiples pour couvrir toutes versions Streamlit) */
+            /* Padding réduit + largeur 100 % */
             .main .block-container,
             section.main > div.block-container,
             [data-testid="stAppViewContainer"] .main .block-container,
             [data-testid="stMain"] .block-container {
                 padding-left: 0.75rem !important;
                 padding-right: 0.75rem !important;
+                padding-top: 1rem !important;
                 max-width: 100% !important;
+                width: 100% !important;
             }
 
-            /* Pas de marge sur le body / app */
-            body, [data-testid="stAppViewContainer"], .main {
-                padding-right: 0 !important;
-                margin-right: 0 !important;
-                overflow-x: hidden !important;
-            }
-
-            /* Conteneurs internes : pas de débordement à droite */
+            /* Conteneurs internes : strictement contenus */
             [data-testid="stHorizontalBlock"],
             [data-testid="stVerticalBlock"] {
                 width: 100% !important;
@@ -149,47 +181,59 @@ def inject_global_css() -> None:
                 box-sizing: border-box !important;
             }
 
-            /* Sidebar masquée par défaut sur mobile (repliée) */
+            /* Sidebar masquée par défaut */
             [data-testid="stSidebar"] {
                 min-width: 0 !important;
             }
 
-            /* Métriques : texte légèrement réduit */
+            /* Métriques : texte plus petit pour éviter le wrap moche */
             [data-testid="stMetricValue"] {
-                font-size: 1.1rem !important;
+                font-size: 1.05rem !important;
+                word-break: break-word !important;
             }
             [data-testid="stMetricLabel"] {
                 font-size: 0.78rem !important;
             }
+            [data-testid="stMetricDelta"] {
+                font-size: 0.72rem !important;
+            }
 
-            /* Dataframes scrollables horizontalement */
+            /* Dataframes scrollables */
             [data-testid="stDataFrame"] {
                 overflow-x: auto !important;
+                max-width: 100% !important;
             }
 
             /* Titres réduits */
-            h1 { font-size: 1.6rem !important; }
-            h2 { font-size: 1.3rem !important; }
-            h3 { font-size: 1.1rem !important; }
+            h1 { font-size: 1.5rem !important; line-height: 1.2 !important; }
+            h2 { font-size: 1.25rem !important; }
+            h3 { font-size: 1.05rem !important; }
+            h4 { font-size: 0.95rem !important; }
 
-            /* Cards navigation home */
-            [data-testid="stVerticalBlock"] > div[data-testid="element-container"] > div {
-                margin-bottom: 0.5rem;
+            /* Encart info-band en mobile : padding plus fin */
+            .info-band {
+                padding: 10px 12px !important;
+                font-size: 0.88rem !important;
+            }
+
+            /* Tableaux markdown : police plus petite sur mobile */
+            .main table {
+                font-size: 0.82rem !important;
+            }
+            .main th, .main td {
+                padding: 6px 8px !important;
             }
         }
 
-        /* ── Tooltip Elo : reste dans le viewport sur mobile ───────────── */
+        /* ── Tooltip Elo : reste dans le viewport ───────────────────────── */
         @media (max-width: 500px) {
             .elo-tooltip .elo-tip {
-                width: 85vw !important;
-                left: 0 !important;
-                transform: none !important;
+                width: 80vw !important;
+                max-width: 280px !important;
+                left: 50% !important;
+                transform: translateX(-50%) !important;
+                font-size: 0.78rem !important;
             }
-        }
-
-        /* ── Charts Plotly toujours 100% largeur ───────────────────────── */
-        .js-plotly-plot, .plotly {
-            max-width: 100% !important;
         }
         </style>
         """,
