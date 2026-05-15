@@ -124,27 +124,6 @@ page_info(
     "et simulez des probabilités de match grâce à un modèle ML calibré."
 )
 
-# ── Encart pédagogique Elo ────────────────────────────────────────────────────
-with st.expander("ℹ️ C'est quoi le rating Elo (utilisé partout dans l'app) ?"):
-    st.markdown(
-        """
-        Le **rating Elo** attribue à chaque joueur un score reflétant son niveau actuel :
-        plus c'est élevé, plus le joueur est fort. Initialement conçu pour les échecs,
-        il est aujourd'hui largement utilisé au tennis (FiveThirtyEight, Tennis Abstract…).
-
-        **Repères rapides :**
-        - **2200+** : élite mondiale (Top 5)
-        - **2000–2200** : Top 20
-        - **1800–2000** : circuit pro
-        - **1500** : valeur de départ pour tout nouveau joueur
-
-        Chaque joueur a **4 ratings** : Global, Dur, Terre battue, Gazon (pour capter la
-        spécialisation par surface). Les détails du modèle (facteur K adaptatif,
-        décroissance d'inactivité, bonus Best-of-5) sont expliqués sur la page
-        **Classements Elo**.
-        """
-    )
-
 # ── Navigation cards ──────────────────────────────────────────────────────────
 st.markdown("### Explorer l'application")
 
