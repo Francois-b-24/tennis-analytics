@@ -8,7 +8,13 @@ from pathlib import Path
 import duckdb
 from loguru import logger
 
-from ingestion.sackmann_loader import get_project_root
+
+def get_project_root() -> Path:
+    """Retourne la racine du projet depuis `ROOT_PATH` ou la découverte locale."""
+    env = os.getenv("ROOT_PATH")
+    if env:
+        return Path(env).expanduser().resolve()
+    return Path(__file__).resolve().parents[2]
 
 
 def _processed_dir(root: Path) -> Path:
