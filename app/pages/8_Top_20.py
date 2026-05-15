@@ -1,0 +1,436 @@
+"""Page Top 20 : focus sur les 20 meilleurs joueurs ATP et WTA selon l'Elo global."""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+_APP_DIR = Path(__file__).resolve().parents[1]
+_ROOT = Path(__file__).resolve().parents[2]
+
+from dotenv import load_dotenv
+
+load_dotenv(_ROOT / ".env")
+os.environ.setdefault("ROOT_PATH", str(_ROOT))
+
+_SRC = _ROOT / "src"
+for path in (_APP_DIR, _ROOT, _SRC):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
+
+import duckdb
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+from plotly.subplots import make_subplots
+
+from components.plotly_theme import (
+    TENNIS_CLAY,
+    TENNIS_GREEN,
+    TENNIS_HARD,
+    TENNIS_LINE,
+    apply_tennis_theme,
+)
+from components.widgets import format_elo, inject_global_css, page_info
+from db.duckdb_session import create_connection
+
+st.set_page_config(page_title="Top 20 — Tennis Analytics", layout="wide")
+inject_global_css()
+
+
+@st.cache_resource(show_spinner=False)
+def _connection() -> duckdb.DuckDBPyConnection:
+    return create_connection(_ROOT)
+
+
+@st.cache_data(show_spinner=False)
+def _top20_per_circuit(_root: str, circuit: str) -> pd.DataFrame:
+    """Top 20 joueurs d'un circuit selon Elo global, avec leurs ratings par surface."""
+    return _connection().execute(
+        """
+        SELECT
+            ROW_NUMBER() OVER (ORDER BY e.elo_global DESC NULLS LAST) AS rang,
+            e.player_id,
+            pn.full_name AS joueur,
+            p.country_code,
+            ROUND(e.elo_global, 0) AS elo_global,
+            ROUND(e.elo_hard,   0) AS elo_dur,
+            ROUND(e.elo_clay,   0) AS elo_terre,
+            ROUND(e.elo_grass,  0) AS elo_gazon,
+            e.last_match_date
+        FROM v_elo_latest e
+        JOIN v_player_names pn ON e.player_id = pn.player_id
+        JOIN v_players p       ON e.player_id = p.player_id
+        WHERE p.circuit = ?
+          AND e.elo_global IS NOT NULL
+        ORDER BY e.elo_global DESC NULLS LAST
+        LIMIT 20
+        """,
+        [circuit],
+    ).df()
+
+
+@st.cache_data(show_spinner=False)
+def _player_career_stats(_root: str, player_id: int) -> pd.DataFrame:
+    """Stats de carrière agrégées d'un joueur."""
+    return _connection().execute(
+        """
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN winner_id = ? THEN 1 ELSE 0 END) AS wins,
+            ROUND(
+                SUM(CASE WHEN winner_id = ? THEN 1.0 ELSE 0.0 END) / NULLIF(COUNT(*), 0) * 100,
+                1
+            ) AS win_pct,
+            COUNT(DISTINCT tourney_name) AS tournaments,
+            ROUND(AVG(CASE WHEN winner_id = ? THEN w_ace ELSE l_ace END), 1) AS avg_aces,
+            ROUND(AVG(CASE WHEN winner_id = ? THEN w_df  ELSE l_df  END), 1) AS avg_df,
+            ROUND(AVG(minutes) FILTER (WHERE minutes > 0 AND minutes < 400), 0) AS avg_duration,
+            SUM(CASE WHEN winner_id = ? AND round = 'F' THEN 1 ELSE 0 END) AS titres
+        FROM v_matches
+        WHERE winner_id = ? OR loser_id = ?
+        """,
+        [player_id] * 7,
+    ).df()
+
+
+@st.cache_data(show_spinner=False)
+def _player_recent_form(_root: str, player_id: int) -> tuple[float, list[str]]:
+    """Forme sur les 20 derniers matchs (% victoires + séquence V/D)."""
+    df = _connection().execute(
+        """
+        SELECT winner_id
+        FROM v_matches
+        WHERE winner_id = ? OR loser_id = ?
+        ORDER BY tourney_date DESC
+        LIMIT 20
+        """,
+        [player_id, player_id],
+    ).df()
+    if df.empty:
+        return 0.0, []
+    seq = ["V" if w == player_id else "D" for w in df["winner_id"]]
+    pct = sum(1 for x in seq if x == "V") / len(seq) * 100
+    return pct, seq
+
+
+@st.cache_data(show_spinner=False)
+def _player_surface_winrate(_root: str, player_id: int) -> pd.DataFrame:
+    """Taux de victoire par surface."""
+    return _connection().execute(
+        """
+        SELECT
+            COALESCE(NULLIF(surface, ''), 'Inconnue') AS surface,
+            COUNT(*) AS total,
+            SUM(CASE WHEN winner_id = ? THEN 1 ELSE 0 END) AS wins,
+            ROUND(
+                SUM(CASE WHEN winner_id = ? THEN 1.0 ELSE 0.0 END) / NULLIF(COUNT(*), 0) * 100,
+                1
+            ) AS win_pct
+        FROM v_matches
+        WHERE winner_id = ? OR loser_id = ?
+        GROUP BY surface
+        HAVING COUNT(*) >= 5
+        ORDER BY total DESC
+        """,
+        [player_id, player_id, player_id, player_id],
+    ).df()
+
+
+@st.cache_data(show_spinner=False)
+def _atp_vs_wta_top20_stats(_root: str) -> pd.DataFrame:
+    """Stats agrégées comparées entre Top 20 ATP et Top 20 WTA."""
+    return _connection().execute(
+        """
+        WITH top20 AS (
+            SELECT player_id, p.circuit
+            FROM v_elo_latest e
+            JOIN v_players p USING (player_id)
+            WHERE e.elo_global IS NOT NULL
+            QUALIFY ROW_NUMBER() OVER (PARTITION BY p.circuit ORDER BY e.elo_global DESC) <= 20
+        )
+        SELECT
+            t.circuit,
+            ROUND(AVG(CASE WHEN m.winner_id = t.player_id THEN m.w_ace ELSE m.l_ace END), 2) AS aces_par_match,
+            ROUND(AVG(CASE WHEN m.winner_id = t.player_id THEN m.w_df  ELSE m.l_df  END), 2) AS df_par_match,
+            ROUND(
+                AVG(m.minutes) FILTER (WHERE m.minutes > 0 AND m.minutes < 400),
+                0
+            ) AS duree_moy,
+            ROUND(
+                AVG(
+                    CASE WHEN m.winner_id = t.player_id THEN m.w_bpSaved ELSE m.l_bpSaved END * 1.0
+                  / NULLIF(CASE WHEN m.winner_id = t.player_id THEN m.w_bpFaced ELSE m.l_bpFaced END, 0)
+                ) * 100,
+                1
+            ) AS bp_saves_pct
+        FROM top20 t
+        JOIN v_matches m ON (m.winner_id = t.player_id OR m.loser_id = t.player_id)
+        WHERE m.w_ace IS NOT NULL
+        GROUP BY t.circuit
+        ORDER BY t.circuit
+        """
+    ).df()
+
+
+# ── Sidebar ───────────────────────────────────────────────────────────────────
+circuit_filter = st.sidebar.selectbox(
+    "Circuit", ["Les deux", "ATP", "WTA"], key="top20_circuit"
+)
+
+st.title("Top 20 — Élite mondiale")
+page_info(
+    "Focus sur les <strong>20 meilleurs joueurs ATP et WTA</strong> selon leur rating Elo global. "
+    "Explorez leurs ratings par surface, leur forme récente, leur style de jeu — et comparez "
+    "les tendances structurelles entre les deux circuits."
+)
+
+# ── Données Top 20 ATP + WTA ─────────────────────────────────────────────────
+top_atp = _top20_per_circuit(str(_ROOT), "ATP")
+top_wta = _top20_per_circuit(str(_ROOT), "WTA")
+
+if top_atp.empty and top_wta.empty:
+    st.error("Aucune donnée Elo disponible.")
+    st.stop()
+
+# Filtre
+if circuit_filter == "ATP":
+    df_top = top_atp.copy()
+elif circuit_filter == "WTA":
+    df_top = top_wta.copy()
+else:
+    df_top = pd.concat([top_atp, top_wta], ignore_index=True)
+
+# ── Section 1 : Tableau du Top 20 ────────────────────────────────────────────
+st.subheader(f"Classement — {circuit_filter}")
+
+display_df = df_top.copy()
+if circuit_filter == "Les deux":
+    # Recalcule un rang concaténé : ATP 1-20 puis WTA 1-20
+    display_df["Circuit"] = ["ATP"] * len(top_atp) + ["WTA"] * len(top_wta)
+    cols_order = ["Circuit", "rang", "joueur", "country_code",
+                  "elo_global", "elo_dur", "elo_terre", "elo_gazon"]
+else:
+    cols_order = ["rang", "joueur", "country_code",
+                  "elo_global", "elo_dur", "elo_terre", "elo_gazon"]
+
+display_df = display_df.rename(columns={
+    "rang": "Rang",
+    "joueur": "Joueur",
+    "country_code": "Pays",
+    "elo_global": "Elo global",
+    "elo_dur": "Elo dur",
+    "elo_terre": "Elo terre",
+    "elo_gazon": "Elo gazon",
+})
+cols_renamed = [c if c not in ["rang", "joueur", "country_code",
+                                "elo_global", "elo_dur", "elo_terre", "elo_gazon"]
+                else c.capitalize() for c in cols_order]
+cols_to_show = [c for c in display_df.columns if c in cols_renamed or c == "Circuit"]
+ordered = ["Circuit", "Rang", "Joueur", "Pays", "Elo global", "Elo dur", "Elo terre", "Elo gazon"]
+final_cols = [c for c in ordered if c in display_df.columns]
+
+st.dataframe(display_df[final_cols], use_container_width=True, hide_index=True)
+
+st.divider()
+
+# ── Section 2 : Focus joueur ─────────────────────────────────────────────────
+st.subheader("Zoom sur un joueur")
+
+mapping = dict(zip(df_top["joueur"], df_top["player_id"], strict=False))
+selected = st.selectbox(
+    "Sélectionner un joueur",
+    list(mapping.keys()),
+    key="top20_player_select",
+)
+pid = int(mapping[selected])
+
+# Ligne du joueur
+row = df_top[df_top["joueur"] == selected].iloc[0]
+
+# Stats carrière
+career = _player_career_stats(str(_ROOT), pid)
+form_pct, form_seq = _player_recent_form(str(_ROOT), pid)
+surf_winrate = _player_surface_winrate(str(_ROOT), pid)
+
+# Carte d'identité — métriques principales
+m1, m2, m3, m4 = st.columns(4)
+with m1:
+    st.metric("Rang", f"#{int(row['rang'])}")
+with m2:
+    st.metric("Elo global", format_elo(row["elo_global"]))
+with m3:
+    if not career.empty:
+        st.metric(
+            "Bilan carrière",
+            f"{int(career.iloc[0]['wins'] or 0)} V",
+            f"{(career.iloc[0]['win_pct'] or 0):.1f} %",
+            delta_color="off",
+        )
+with m4:
+    st.metric("Forme (20 derniers)", f"{form_pct:.0f} %")
+
+# Séquence V/D visuelle
+if form_seq:
+    seq_html = " ".join(
+        f"<span style='display:inline-block;width:22px;height:22px;line-height:22px;"
+        f"text-align:center;border-radius:4px;margin:1px;color:white;font-size:11px;"
+        f"font-weight:600;background:{TENNIS_GREEN if v == 'V' else TENNIS_CLAY}'>{v}</span>"
+        for v in form_seq
+    )
+    st.markdown(
+        f"<div style='margin-top:8px'><strong>20 derniers matchs :</strong><br>{seq_html}</div>",
+        unsafe_allow_html=True,
+    )
+
+st.markdown("")  # espacement
+
+# Profil 3 colonnes : Elo radar + Surface bars + Style stats
+col_a, col_b, col_c = st.columns(3)
+
+# A) Radar des 4 Elo
+with col_a:
+    st.markdown("##### Profil Elo multi-surface")
+    fig_radar = go.Figure()
+    surfaces = ["Global", "Dur", "Terre", "Gazon"]
+    values = [
+        float(row["elo_global"] or 0),
+        float(row["elo_dur"] or 0),
+        float(row["elo_terre"] or 0),
+        float(row["elo_gazon"] or 0),
+    ]
+    fig_radar.add_trace(go.Scatterpolar(
+        r=values + [values[0]],
+        theta=surfaces + [surfaces[0]],
+        fill="toself",
+        line=dict(color=TENNIS_HARD, width=2),
+        fillcolor="rgba(31, 78, 121, 0.25)",
+        name=selected,
+    ))
+    fig_radar.update_layout(
+        polar=dict(
+            radialaxis=dict(visible=True, range=[1500, max(values) + 50]),
+        ),
+        showlegend=False,
+        height=320,
+        margin=dict(l=20, r=20, t=20, b=20),
+    )
+    apply_tennis_theme(fig_radar)
+    st.plotly_chart(fig_radar, use_container_width=True)
+
+# B) % Victoires par surface
+with col_b:
+    st.markdown("##### % victoires par surface")
+    if not surf_winrate.empty:
+        SURF_COLORS = {"Hard": TENNIS_HARD, "Clay": TENNIS_CLAY, "Grass": TENNIS_GREEN}
+        colors = [SURF_COLORS.get(s, TENNIS_LINE) for s in surf_winrate["surface"]]
+        fig_surf = go.Figure(go.Bar(
+            x=surf_winrate["surface"],
+            y=surf_winrate["win_pct"],
+            marker_color=colors,
+            text=[f"{v:.0f}%" for v in surf_winrate["win_pct"]],
+            textposition="outside",
+            hovertemplate="<b>%{x}</b><br>%{y}% sur %{customdata} matchs<extra></extra>",
+            customdata=surf_winrate["total"],
+        ))
+        fig_surf.update_layout(
+            yaxis_title="% victoires",
+            yaxis=dict(range=[0, 100]),
+            height=320,
+            showlegend=False,
+            margin=dict(l=40, r=20, t=20, b=40),
+        )
+        apply_tennis_theme(fig_surf)
+        st.plotly_chart(fig_surf, use_container_width=True)
+    else:
+        st.info("Pas assez de matchs pour calculer un taux par surface.")
+
+# C) Style de jeu
+with col_c:
+    st.markdown("##### Style de jeu")
+    if not career.empty:
+        c = career.iloc[0]
+
+        def fmt(v, suffix="", default="—"):
+            if v is None or (isinstance(v, float) and pd.isna(v)):
+                return default
+            return f"{v:.1f}{suffix}" if isinstance(v, float) else f"{v}{suffix}"
+
+        st.metric("Aces / match", fmt(c["avg_aces"]))
+        st.metric("Double-fautes / match", fmt(c["avg_df"]))
+        if c["avg_duration"] and not pd.isna(c["avg_duration"]):
+            st.metric("Durée moyenne", f"{int(c['avg_duration'])} min")
+        if c["tournaments"]:
+            st.metric("Tournois joués", f"{int(c['tournaments'])}")
+
+st.divider()
+
+# ── Section 3 : Comparaison ATP vs WTA ───────────────────────────────────────
+st.subheader("Comparaison structurelle ATP vs WTA")
+st.caption(
+    "Stats moyennes calculées sur tous les matchs joués par les Top 20 de chaque circuit."
+)
+
+cmp = _atp_vs_wta_top20_stats(str(_ROOT))
+
+if cmp.empty or len(cmp) < 2:
+    st.info("Données insuffisantes pour la comparaison.")
+else:
+    fig_cmp = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=(
+            "Aces / match",
+            "Double-fautes / match",
+            "Durée moyenne (min)",
+            "% Break points sauvés",
+        ),
+        vertical_spacing=0.18,
+        horizontal_spacing=0.18,
+    )
+
+    metrics = [
+        ("aces_par_match", 1, 1),
+        ("df_par_match", 1, 2),
+        ("duree_moy", 2, 1),
+        ("bp_saves_pct", 2, 2),
+    ]
+
+    for col, row_pos, col_pos in metrics:
+        fig_cmp.add_trace(
+            go.Bar(
+                x=cmp["circuit"],
+                y=cmp[col],
+                marker_color=[TENNIS_HARD if c == "ATP" else TENNIS_CLAY for c in cmp["circuit"]],
+                text=cmp[col].round(1),
+                textposition="outside",
+                showlegend=False,
+                hovertemplate="<b>%{x}</b><br>%{y}<extra></extra>",
+            ),
+            row=row_pos,
+            col=col_pos,
+        )
+
+    fig_cmp.update_layout(
+        height=550,
+        showlegend=False,
+        margin=dict(l=40, r=20, t=60, b=40),
+    )
+    apply_tennis_theme(fig_cmp)
+    st.plotly_chart(fig_cmp, use_container_width=True)
+
+    # Lecture rapide
+    if len(cmp) == 2:
+        atp_row = cmp[cmp["circuit"] == "ATP"].iloc[0]
+        wta_row = cmp[cmp["circuit"] == "WTA"].iloc[0]
+        st.markdown(
+            f"""
+            **Lecture rapide :**
+            - 🎾 Les Top 20 ATP servent en moyenne **{atp_row['aces_par_match']:.1f} aces / match**
+              contre **{wta_row['aces_par_match']:.1f}** côté WTA.
+            - ⏱️ Un match d'élite ATP dure en moyenne **{int(atp_row['duree_moy'])} min**,
+              contre **{int(wta_row['duree_moy'])} min** en WTA.
+            - 🛡️ Les Top 20 ATP sauvent **{atp_row['bp_saves_pct']:.1f} %** de leurs balles de break,
+              les WTA **{wta_row['bp_saves_pct']:.1f} %**.
+            """
+        )

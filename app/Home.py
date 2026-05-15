@@ -275,6 +275,12 @@ PAGES = [
         "icon": "📖",
         "desc": "Document PDF de référence sur le système de rating Elo appliqué au tennis.",
     },
+    {
+        "path": "pages/8_Top_20.py",
+        "title": "Top 20",
+        "icon": "🌟",
+        "desc": "Focus sur les 20 meilleurs joueurs ATP et WTA : profil Elo, forme, style et comparaison structurelle.",
+    },
 ]
 
 row1 = st.columns(3)
