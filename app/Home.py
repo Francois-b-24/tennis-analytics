@@ -276,10 +276,10 @@ PAGES = [
         "desc": "Document PDF de référence sur le système de rating Elo appliqué au tennis.",
     },
     {
-        "path": "pages/8_Top_20.py",
-        "title": "Top 20",
+        "path": "pages/8_Top_20_actuel.py",
+        "title": "Top 20 actuel",
         "icon": "🌟",
-        "desc": "Focus sur les 20 meilleurs joueurs ATP et WTA : profil Elo, forme, style et comparaison structurelle.",
+        "desc": "Focus sur les 20 meilleurs joueurs ATP et WTA actuels : profil Elo, forme, style et comparaison structurelle.",
     },
 ]
 

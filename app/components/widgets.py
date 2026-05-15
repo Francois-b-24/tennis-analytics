@@ -117,10 +117,31 @@ def load_player_options(connection: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     return frame.drop_duplicates(subset=["full_name"])
 
 
+def _is_valid_player_name(name: str) -> bool:
+    """Filtre les noms de joueurs incomplets ou corrompus.
+
+    Critères d'exclusion :
+    - Vide ou trop court (< 4 caractères)
+    - Contient un point d'interrogation (donnée corrompue Sackmann : `?? Baillie`)
+    - Contient au moins un mot d'une seule lettre, type `A Dupont` (initiale isolée
+      sans prénom complet — typique des matchs qualifiants où Sackmann n'a pas
+      l'identité complète)
+    """
+    if not name or len(name) < 4 or "?" in name:
+        return False
+    parts = [p for p in name.split() if p]
+    if len(parts) < 2:
+        # Nom mononyme accepté seulement s'il fait >= 4 lettres (cas joueurs uniques)
+        return len(name) >= 4
+    # Au moins 2 mots : tous doivent faire >= 2 lettres
+    return all(len(p) >= 2 for p in parts)
+
+
 def disambiguate_player_labels(df: pd.DataFrame) -> pd.DataFrame:
     """Ajoute une colonne `label` unique par joueur pour les selectbox.
 
-    - Filtre les noms vides ou trop courts (< 3 caractères = juste une initiale).
+    - Filtre les noms vides, trop courts, avec '?', ou avec initiale isolée
+      (ex : `A Dupont`, `?? Baillie`).
     - Ajoute le code pays IOC entre parenthèses pour les homonymes : `John Smith (USA)`.
     - Si même les `(IOC)` ne suffisent pas (joueurs vraiment indistinguables),
       ajoute le `player_id` en suffixe pour garantir l'unicité du label.
@@ -143,7 +164,8 @@ def disambiguate_player_labels(df: pd.DataFrame) -> pd.DataFrame:
 
     out = df.copy()
     out["full_name"] = out["full_name"].astype(str).str.strip()
-    out = out[out["full_name"].str.len() >= 3]
+    # Filtre noms invalides (initiales isolées, '?', trop courts)
+    out = out[out["full_name"].apply(_is_valid_player_name)]
 
     if pays_col:
         out["_pays"] = out[pays_col].fillna("").astype(str).str.strip().str.upper()

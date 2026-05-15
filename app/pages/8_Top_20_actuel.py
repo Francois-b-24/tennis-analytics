@@ -35,7 +35,7 @@ from components.plotly_theme import (
 from components.widgets import country_flag_with_code, format_elo, inject_global_css, page_info
 from db.duckdb_session import create_connection
 
-st.set_page_config(page_title="Top 20 — Tennis Analytics", layout="wide")
+st.set_page_config(page_title="Top 20 actuel — Tennis Analytics", layout="wide")
 inject_global_css()
 
 
@@ -197,11 +197,11 @@ circuit_filter = st.sidebar.selectbox(
     "Circuit", ["Les deux", "ATP", "WTA"], key="top20_circuit"
 )
 
-st.title("Top 20 — Élite mondiale")
+st.title("Top 20 actuel — Élite mondiale")
 page_info(
-    "Focus sur les <strong>20 meilleurs joueurs ATP et WTA</strong> selon leur rating Elo global. "
-    "Explorez leurs ratings par surface, leur forme récente, leur style de jeu — et comparez "
-    "les tendances structurelles entre les deux circuits."
+    "Focus sur les <strong>20 meilleurs joueurs ATP et WTA actuels</strong> selon leur rating Elo "
+    "global le plus récent. Explorez leurs ratings par surface, leur forme récente, leur style de jeu "
+    "— et comparez les tendances structurelles entre les deux circuits."
 )
 
 # ── Données Top 20 ATP + WTA ─────────────────────────────────────────────────
