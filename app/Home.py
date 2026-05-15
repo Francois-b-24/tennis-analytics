@@ -46,9 +46,9 @@ cf = circuit_filter_sql(circuit)
 # ── Hero ──────────────────────────────────────────────────────────────────────
 st.markdown(
     """
-    <h1 style='margin-bottom:0'>&#127934; Tennis Analytics</h1>
+    <h1 style='margin-bottom:0'>🎾 Tennis Analytics</h1>
     <p style='color:#666;font-size:1.1rem;margin-top:4px'>
-        Plateforme personnelle d'analyse ATP/WTA &mdash; statistiques, ratings Elo et pr&eacute;dictions ML
+        Plateforme personnelle d'analyse ATP/WTA — statistiques, ratings Elo et prédictions ML
     </p>
     """,
     unsafe_allow_html=True,
@@ -88,7 +88,7 @@ total_tournois = int(
 )
 
 with col1:
-    st.metric("Matchs indexes", f"{total_matches:,}".replace(",", " "))
+    st.metric("Matchs indexés", f"{total_matches:,}".replace(",", " "))
 with col2:
     st.metric("Joueurs", f"{total_players:,}".replace(",", " "))
 with col3:
@@ -192,19 +192,19 @@ st.markdown(
     </style>
 
     <div class="info-band">
-    &#127934;&nbsp; Bienvenue sur cette plateforme d'analyse tennis personnelle.
-    Explorez les statistiques de carri&egrave;re des joueurs ATP et WTA depuis 2010,
-    comparez-les en face &agrave; face, consultez les classements
+    🎾&nbsp; Bienvenue sur cette plateforme d'analyse tennis personnelle.
+    Explorez les statistiques de carrière des joueurs ATP et WTA depuis 2010,
+    comparez-les en face à face, consultez les classements
     <span class="elo-tooltip">Elo
         <span class="elo-tip">
             <strong>Rating Elo</strong><br>
-            Syst&egrave;me de notation qui mesure le niveau d'un joueur match apr&egrave;s match.
+            Système de notation qui mesure le niveau d'un joueur match après match.
             Battre un adversaire fort rapporte plus de points que battre un outsider.
             Chaque joueur dispose de 4 ratings : Global, Dur, Terre battue et Gazon.<br><br>
-            <em>Rep&egrave;res : 1 500 = d&eacute;butant &middot; 1 800 = pro &middot; 2 000 = Top 20 &middot; 2 200+ = &eacute;lite</em>
+            <em>Repères : 1 500 = débutant · 1 800 = pro · 2 000 = Top 20 · 2 200+ = élite</em>
         </span>
     </span>
-    par surface et simulez des probabilit&eacute;s de match gr&acirc;ce &agrave; un mod&egrave;le ML calibr&eacute;.
+    par surface et simulez des probabilités de match grâce à un modèle ML calibré.
     </div>
     """,
     unsafe_allow_html=True,
@@ -217,38 +217,38 @@ PAGES = [
     {
         "path": "pages/1_Joueurs.py",
         "title": "Joueurs",
-        "icon": "&#128100;",
-        "desc": "Fiche joueur, stats carriere par surface, evolution Elo dans le temps et derniers matchs.",
+        "icon": "👤",
+        "desc": "Fiche joueur, stats carrière par surface, évolution Elo dans le temps et derniers matchs.",
     },
     {
         "path": "pages/2_Face_a_Face.py",
-        "title": "Face a Face",
-        "icon": "&#9876;&#65039;",
+        "title": "Face à Face",
+        "icon": "⚔️",
         "desc": "Bilan H2H, radar de style de jeu et favori Elo pour n'importe quelle paire de joueurs.",
     },
     {
         "path": "pages/3_Tournois.py",
         "title": "Tournois",
-        "icon": "&#127942;",
-        "desc": "Palmares historique, top vainqueurs et duree des matchs pour chaque tournoi.",
+        "icon": "🏆",
+        "desc": "Palmarès historique, top vainqueurs et durée des matchs pour chaque tournoi.",
     },
     {
         "path": "pages/4_Classements_Elo.py",
         "title": "Classements Elo",
-        "icon": "&#128202;",
+        "icon": "📊",
         "desc": "Top N joueurs par rating Elo global ou par surface, avec comparaison multi-surface.",
     },
     {
         "path": "pages/5_Predictions.py",
-        "title": "Predictions",
-        "icon": "&#129302;",
-        "desc": "Probabilite de victoire ML (regression logistique calibree) pour deux joueurs sur une surface.",
+        "title": "Prédictions",
+        "icon": "🤖",
+        "desc": "Probabilité de victoire ML (régression logistique calibrée) pour deux joueurs sur une surface.",
     },
     {
         "path": "pages/6_Insights.py",
         "title": "Insights",
-        "icon": "&#128161;",
-        "desc": "Tendances long-terme : aces, double-fautes, duree des matchs et comparaison ATP/WTA.",
+        "icon": "💡",
+        "desc": "Tendances long-terme : aces, double-fautes, durée des matchs et comparaison ATP/WTA.",
     },
 ]
 
