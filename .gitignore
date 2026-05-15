@@ -35,6 +35,10 @@ ENV/
 
 # uv
 .uv/
+uv.lock
+
+# Claude Code (worktrees, sessions)
+.claude/
 
 # IDE
 .idea/
