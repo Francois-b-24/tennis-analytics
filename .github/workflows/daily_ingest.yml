@@ -1,8 +1,10 @@
 name: Ingestion quotidienne
 
 on:
-  schedule:
-    - cron: "0 4 * * *"
+  # Désactivé : le pipeline d'ingestion s'exécute en local via `tennis-ingest`.
+  # Ré-activer en décommentant ci-dessous + en ajustant requirements pour pandera.
+  # schedule:
+  #   - cron: "0 4 * * *"
   workflow_dispatch: {}
 
 permissions:
