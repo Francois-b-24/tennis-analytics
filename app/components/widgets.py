@@ -117,9 +117,14 @@ def inject_global_css() -> None:
             max-width: 100vw !important;
         }
 
-        /* ── Charts Plotly toujours 100% largeur ───────────────────────── */
-        .js-plotly-plot, .plotly {
+        /* ── Charts Plotly : 100% largeur + hauteur minimale ─────────────── */
+        .js-plotly-plot, .plotly, .plotly-graph-div {
             max-width: 100% !important;
+            width: 100% !important;
+        }
+        [data-testid="stPlotlyChart"] {
+            max-width: 100% !important;
+            overflow: hidden !important;
         }
 
         /* ── Encart info-band : largeur sûre ────────────────────────────── */
@@ -222,6 +227,31 @@ def inject_global_css() -> None:
             }
             .main th, .main td {
                 padding: 6px 8px !important;
+            }
+
+            /* st.dataframe (tableaux natifs) : conteneurs strictement bornés */
+            [data-testid="stDataFrame"],
+            [data-testid="stDataFrame"] > div,
+            [data-testid="stDataFrame"] iframe {
+                max-width: 100% !important;
+                width: 100% !important;
+            }
+
+            /* Charts Plotly : hauteur minimale lisible sur mobile */
+            [data-testid="stPlotlyChart"] {
+                min-height: 320px !important;
+            }
+            .js-plotly-plot, .plotly-graph-div {
+                min-height: 320px !important;
+            }
+
+            /* Code blocks : ne pas déborder */
+            [data-testid="stCodeBlock"] pre,
+            [data-testid="stCodeBlock"] code {
+                font-size: 0.78rem !important;
+                white-space: pre !important;
+                overflow-x: auto !important;
+                max-width: 100% !important;
             }
         }
 
