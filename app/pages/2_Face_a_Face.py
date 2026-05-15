@@ -14,10 +14,10 @@ from dotenv import load_dotenv
 load_dotenv(_ROOT / ".env")
 os.environ.setdefault("ROOT_PATH", str(_ROOT))
 
-if str(_APP_DIR) not in sys.path:
-    sys.path.insert(0, str(_APP_DIR))
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+_SRC = _ROOT / "src"
+for path in (_APP_DIR, _ROOT, _SRC):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
 import math
 
