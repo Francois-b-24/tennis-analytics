@@ -19,6 +19,8 @@ if str(_APP_DIR) not in sys.path:
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+import math
+
 import duckdb
 import numpy as np
 import pandas as pd
@@ -277,14 +279,24 @@ st.markdown(_favorite_message(player_a, player_b, name_a, name_b, surface_filter
 
 summary = _h2h_summary(str(_ROOT), player_a, player_b)
 if not summary.empty:
-    total = int(summary.iloc[0]["total"])
-    wins_a = int(summary.iloc[0]["wins_a"])
-    wins_b = int(summary.iloc[0]["wins_b"])
+    def _safe_int(v: object) -> int:
+        try:
+            f = float(v)
+            return 0 if math.isnan(f) else int(f)
+        except (TypeError, ValueError):
+            return 0
+
+    total = _safe_int(summary.iloc[0]["total"])
+    wins_a = _safe_int(summary.iloc[0]["wins_a"])
+    wins_b = _safe_int(summary.iloc[0]["wins_b"])
     st.subheader("Bilan global")
-    st.write(
-        f"{name_a} mène **{wins_a}** à **{wins_b}** sur **{total}** "
-        "rencontres officielles indexées."
-    )
+    if total == 0:
+        st.info(f"Aucune confrontation trouvée entre {name_a} et {name_b}.")
+    else:
+        st.write(
+            f"{name_a} mène **{wins_a}** à **{wins_b}** sur **{total}** "
+            "rencontres officielles indexées."
+        )
 
 surface_df = _h2h_surface(str(_ROOT), player_a, player_b)
 if not surface_df.empty:
