@@ -32,7 +32,7 @@ from components.plotly_theme import (
     TENNIS_LINE,
     apply_tennis_theme,
 )
-from components.widgets import circuit_filter_sql
+from components.widgets import circuit_filter_sql, page_info
 from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Insights — Tennis Analytics", layout="wide")
@@ -125,7 +125,12 @@ def _duration_distribution(_root: str, circuit: str) -> pd.DataFrame:
 circuit = st.sidebar.selectbox("Circuit", ["Tous", "ATP", "WTA"], key="ins_circuit")
 
 st.title("Insights")
-st.caption("Tendances long-terme sur les données ATP/WTA 2010–2026.")
+page_info(
+    "Tendances long-terme sur 15 ans de tennis professionnel : "
+    "évolution du nombre d'aces et de double-fautes, durée des matchs dans le temps, "
+    "comparaison des circuits ATP et WTA, et distribution des durées par surface."
+)
+st.caption("Données ATP/WTA 2010–2026.")
 
 # ── Section A — Aces et double-fautes ────────────────────────────────────────
 st.subheader("Aces et double-fautes par match (par année)")

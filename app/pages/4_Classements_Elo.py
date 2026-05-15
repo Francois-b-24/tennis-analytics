@@ -31,7 +31,7 @@ from components.plotly_theme import (
     TENNIS_LINE,
     apply_tennis_theme,
 )
-from components.widgets import format_elo
+from components.widgets import format_elo, page_info
 from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Classements Elo — Tennis Analytics", layout="wide")
@@ -88,6 +88,11 @@ surface_col = SURFACE_MAP[surface_choice]
 surface_color = SURFACE_COLORS[surface_choice]
 
 st.title("Classements Elo")
+page_info(
+    "Classement des joueurs selon leur rating Elo — un indicateur de niveau calculé match après match, "
+    "plus précis que le classement officiel car il tient compte de la force des adversaires. "
+    "Filtrez par surface pour voir qui domine vraiment sur dur, terre battue ou gazon."
+)
 st.caption(
     f"Ratings calculés sur {top_n} joueurs {circuit} — surface de référence : **{surface_choice}**"
 )

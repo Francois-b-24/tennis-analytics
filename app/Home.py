@@ -20,7 +20,7 @@ if str(_APP_DIR) not in sys.path:
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from components.widgets import circuit_filter_sql, format_date_dd_mm_yyyy, safe_scalar
+from components.widgets import circuit_filter_sql, format_date_dd_mm_yyyy, page_info, safe_scalar
 from db.duckdb_session import create_connection
 
 st.set_page_config(
@@ -116,6 +116,13 @@ with col6:
     st.metric("Période couverte", f"{min_date} → {max_date}")
 
 st.divider()
+
+page_info(
+    "Bienvenue sur cette plateforme d'analyse tennis personnelle. "
+    "Explorez les statistiques de carrière des joueurs ATP et WTA depuis 2010, "
+    "comparez-les en face à face, consultez les classements Elo par surface "
+    "et simulez des probabilités de match grâce à un modèle ML calibré."
+)
 
 # ── Encart pédagogique Elo ────────────────────────────────────────────────────
 with st.expander("ℹ️ C'est quoi le rating Elo (utilisé partout dans l'app) ?"):

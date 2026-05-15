@@ -31,6 +31,7 @@ from components.plotly_theme import apply_tennis_theme
 from components.widgets import (
     format_date_dd_mm_yyyy,
     load_player_options,
+    page_info,
     player_selectbox,
 )
 from db.duckdb_session import create_connection
@@ -266,6 +267,12 @@ surface_filter = st.selectbox(
     "Surface de référence pour le favori Elo",
     ["Global", "Dur", "Terre battue", "Gazon"],
     index=0,
+)
+
+page_info(
+    "Comparez deux joueurs en face à face : bilan H2H global et par surface, "
+    "historique de toutes leurs confrontations, radar comparatif de leur style de jeu "
+    "(service, première balle, balles de break) et prédiction du favori selon l'Elo."
 )
 
 if player_a is None or player_b is None or player_a == player_b:

@@ -33,7 +33,7 @@ from components.plotly_theme import (
     TENNIS_LINE,
     apply_tennis_theme,
 )
-from components.widgets import format_date_dd_mm_yyyy, format_elo, format_percent
+from components.widgets import format_date_dd_mm_yyyy, format_elo, format_percent, page_info
 from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Joueurs — Tennis Analytics", layout="wide")
@@ -166,6 +166,11 @@ circuit = st.sidebar.selectbox("Circuit", ["ATP", "WTA"], key="joueurs_circuit")
 
 # ── Titre ─────────────────────────────────────────────────────────────────────
 st.title("Joueurs")
+page_info(
+    "Sélectionnez un joueur pour afficher sa fiche complète : ratings Elo actuels par surface, "
+    "bilan victoires/défaites sur toute sa carrière, performances par type de terrain "
+    "et évolution de son niveau dans le temps."
+)
 
 players = _player_options(str(_ROOT), circuit)
 if players.empty:

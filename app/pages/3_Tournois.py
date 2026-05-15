@@ -31,7 +31,7 @@ from components.plotly_theme import (
     TENNIS_LINE,
     apply_tennis_theme,
 )
-from components.widgets import format_date_dd_mm_yyyy
+from components.widgets import format_date_dd_mm_yyyy, page_info
 from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Tournois — Tennis Analytics", layout="wide")
@@ -147,6 +147,10 @@ def _surface_breakdown(_root: str, tourney: str, circuit: str) -> pd.DataFrame:
 circuit = st.sidebar.selectbox("Circuit", ["ATP", "WTA"], key="tourn_circuit")
 
 st.title("Tournois")
+page_info(
+    "Explorez l'histoire d'un tournoi : palmarès des finales, joueurs les plus titrés, "
+    "évolution de la durée moyenne des matchs au fil des années et répartition par surface."
+)
 
 tournois = _tournament_list(str(_ROOT), circuit)
 if not tournois:

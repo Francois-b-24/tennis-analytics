@@ -33,7 +33,7 @@ from components.plotly_theme import (
     TENNIS_LINE,
     apply_tennis_theme,
 )
-from components.widgets import load_model_bundle, load_player_options, player_selectbox
+from components.widgets import load_model_bundle, load_player_options, page_info, player_selectbox
 from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Prédictions — Tennis Analytics", layout="wide")
@@ -139,6 +139,11 @@ def _recent_form(_root: str, player_id: int) -> float:
 circuit = st.sidebar.selectbox("Circuit", ["ATP", "WTA"], key="pred_circuit")
 
 st.title("Prédictions")
+page_info(
+    "Estimez la probabilité de victoire entre deux joueurs sur une surface donnée. "
+    "Le modèle est une régression logistique calibrée entraînée sur ~90 000 matchs depuis 2010 — "
+    "il combine les ratings Elo, le bilan H2H, la forme récente et la spécialisation par surface."
+)
 
 # ── Vérification modèle ───────────────────────────────────────────────────────
 bundle = load_model_bundle(MODEL_PATH)

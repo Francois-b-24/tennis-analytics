@@ -106,6 +106,27 @@ def circuit_filter_sql(circuit: str) -> str:
     return ""
 
 
+def page_info(text: str, icon: str = "🎾") -> None:
+    """Affiche un encart descriptif soft au style tennis (vert discret)."""
+    st.markdown(
+        f"""
+        <div style="
+            background: linear-gradient(135deg, #f4f9f5 0%, #eaf3ec 100%);
+            border-left: 4px solid #3A7D44;
+            border-radius: 0 8px 8px 0;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            color: #3a3a3a;
+            font-size: 0.92rem;
+            line-height: 1.6;
+        ">
+        {icon}&nbsp; {text}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 @st.cache_resource(show_spinner=False)
 def load_model_bundle(model_path: str) -> dict | None:
     """Charge le bundle joblib {'model': ..., 'features': [...]}."""
