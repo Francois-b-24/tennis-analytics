@@ -243,13 +243,17 @@ if not career.empty:
         except (TypeError, ValueError):
             return None
 
-    total = int(r["total"])
-    wins = int(r["wins"])
+    def _safe_int(v: object) -> int:
+        f = _safe_float(v)
+        return int(f) if f is not None else 0
+
+    total = _safe_int(r["total"])
+    wins = _safe_int(r["wins"])
     win_pct = _safe_float(r["win_pct"]) or 0.0
     avg_aces = _safe_float(r["avg_aces"])
     avg_df = _safe_float(r["avg_df"])
     avg_dur = _safe_float(r["avg_duration"])
-    tournaments = int(r["tournaments"])
+    tournaments = _safe_int(r["tournaments"])
 
     mc1, mc2, mc3, mc4 = st.columns(4)
     with mc1:

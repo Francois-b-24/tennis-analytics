@@ -284,10 +284,15 @@ with m2:
     st.metric("Elo global", format_elo(row["elo_global"]))
 with m3:
     if not career.empty:
+        import math as _m
+        _wins_raw = career.iloc[0]["wins"]
+        _win_pct_raw = career.iloc[0]["win_pct"]
+        _wins = 0 if _wins_raw is None or (isinstance(_wins_raw, float) and _m.isnan(_wins_raw)) else int(_wins_raw)
+        _wp = 0.0 if _win_pct_raw is None or (isinstance(_win_pct_raw, float) and _m.isnan(_win_pct_raw)) else float(_win_pct_raw)
         st.metric(
             "Bilan carrière",
-            f"{int(career.iloc[0]['wins'] or 0)} V",
-            f"{(career.iloc[0]['win_pct'] or 0):.1f} %",
+            f"{_wins} V",
+            f"{_wp:.1f} %",
             delta_color="off",
         )
 with m4:
