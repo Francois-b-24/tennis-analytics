@@ -1,16 +1,15 @@
 # Tennis Analytics Platform
 
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://tennisanalytics.streamlit.app/)
 [![CI](https://github.com/Francois-b-24/tennis-analytics/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Francois-b-24/tennis-analytics/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
-> Plateforme personnelle d’**analytics tennis ATP/WTA** : statistiques descriptives, **Elo maison** (global et par surface), **régression logistique calibrée** pour la probabilité de victoire, et **insights** MVP (momentum, clutch, styles) — interface **Streamlit** en français, stockage **DuckDB + Parquet**.
+> Plateforme personnelle d’**analytics tennis ATP/WTA** : statistiques descriptives, **Elo maison** (global et par surface), **régression logistique calibrée** pour la probabilité de victoire, et **insights** sur les tendances long-terme — interface **Streamlit** en français, stockage **DuckDB + Parquet**.
 
-## Démonstration
+## Démo en ligne
 
-Après ingestion, lancez l’application : captures d’écran et GIF pourront être ajoutés ici (`docs/demo.png`).
+L'application est déployée sur Streamlit Cloud : **https://tennisanalytics.streamlit.app/**
 
 ## Stack
 

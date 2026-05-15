@@ -20,7 +20,7 @@ for path in (_APP_DIR, _ROOT, _SRC):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from components.widgets import circuit_filter_sql, format_date_dd_mm_yyyy, inject_global_css, page_info, safe_scalar
+from components.widgets import circuit_filter_sql, format_date_dd_mm_yyyy, inject_global_css, safe_scalar
 from db.duckdb_session import create_connection
 
 st.set_page_config(
