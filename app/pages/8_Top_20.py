@@ -46,24 +46,36 @@ def _connection() -> duckdb.DuckDBPyConnection:
 
 @st.cache_data(show_spinner=False)
 def _top20_per_circuit(_root: str, circuit: str) -> pd.DataFrame:
-    """Top 20 joueurs d'un circuit selon Elo global, avec leurs ratings par surface."""
+    """Top 20 joueurs d'un circuit selon Elo global, avec leurs ratings par surface.
+
+    Utilise ROW_NUMBER pour dédupliquer côté joueurs (plusieurs lignes peuvent
+    exister par player_id dans v_players quand un joueur a joué sur les 2 circuits).
+    """
     return _connection().execute(
         """
+        WITH player_unique AS (
+            SELECT player_id,
+                   ANY_VALUE(name_first) AS name_first,
+                   ANY_VALUE(name_last) AS name_last,
+                   ANY_VALUE(ioc) AS ioc
+            FROM v_players
+            WHERE circuit = ?
+            GROUP BY player_id
+        )
         SELECT
             ROW_NUMBER() OVER (ORDER BY e.elo_global DESC NULLS LAST) AS rang,
             e.player_id,
-            pn.full_name AS joueur,
-            p.country_code,
+            TRIM(CONCAT(COALESCE(p.name_first, ''), ' ', COALESCE(p.name_last, ''))) AS joueur,
+            COALESCE(p.ioc, '—') AS pays,
             ROUND(e.elo_global, 0) AS elo_global,
             ROUND(e.elo_hard,   0) AS elo_dur,
             ROUND(e.elo_clay,   0) AS elo_terre,
             ROUND(e.elo_grass,  0) AS elo_gazon,
             e.last_match_date
         FROM v_elo_latest e
-        JOIN v_player_names pn ON e.player_id = pn.player_id
-        JOIN v_players p       ON e.player_id = p.player_id
-        WHERE p.circuit = ?
-          AND e.elo_global IS NOT NULL
+        JOIN player_unique p ON e.player_id = p.player_id
+        WHERE e.elo_global IS NOT NULL
+          AND TRIM(CONCAT(COALESCE(p.name_first, ''), ' ', COALESCE(p.name_last, ''))) <> ''
         ORDER BY e.elo_global DESC NULLS LAST
         LIMIT 20
         """,
@@ -207,27 +219,18 @@ st.subheader(f"Classement — {circuit_filter}")
 
 display_df = df_top.copy()
 if circuit_filter == "Les deux":
-    # Recalcule un rang concaténé : ATP 1-20 puis WTA 1-20
     display_df["Circuit"] = ["ATP"] * len(top_atp) + ["WTA"] * len(top_wta)
-    cols_order = ["Circuit", "rang", "joueur", "country_code",
-                  "elo_global", "elo_dur", "elo_terre", "elo_gazon"]
-else:
-    cols_order = ["rang", "joueur", "country_code",
-                  "elo_global", "elo_dur", "elo_terre", "elo_gazon"]
 
 display_df = display_df.rename(columns={
     "rang": "Rang",
     "joueur": "Joueur",
-    "country_code": "Pays",
+    "pays": "Pays",
     "elo_global": "Elo global",
     "elo_dur": "Elo dur",
     "elo_terre": "Elo terre",
     "elo_gazon": "Elo gazon",
 })
-cols_renamed = [c if c not in ["rang", "joueur", "country_code",
-                                "elo_global", "elo_dur", "elo_terre", "elo_gazon"]
-                else c.capitalize() for c in cols_order]
-cols_to_show = [c for c in display_df.columns if c in cols_renamed or c == "Circuit"]
+
 ordered = ["Circuit", "Rang", "Joueur", "Pays", "Elo global", "Elo dur", "Elo terre", "Elo gazon"]
 final_cols = [c for c in ordered if c in display_df.columns]
 

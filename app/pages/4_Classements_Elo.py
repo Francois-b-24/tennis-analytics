@@ -60,19 +60,27 @@ def _connection() -> duckdb.DuckDBPyConnection:
 def _top_elo(_root: str, circuit: str, surface_col: str, top_n: int) -> pd.DataFrame:
     # surface_col vient d'un dict Python hardcodé — pas de risque d'injection
     sql = f"""
+        WITH player_unique AS (
+            SELECT player_id,
+                   TRIM(CONCAT(COALESCE(ANY_VALUE(name_first), ''),
+                               ' ',
+                               COALESCE(ANY_VALUE(name_last), ''))) AS joueur
+            FROM v_players
+            WHERE circuit = ?
+            GROUP BY player_id
+        )
         SELECT
             ROW_NUMBER() OVER (ORDER BY e.{surface_col} DESC NULLS LAST) AS rang,
-            pn.full_name AS joueur,
+            pu.joueur,
             ROUND(e.elo_global, 0) AS elo_global,
             ROUND(e.elo_hard,   0) AS elo_hard,
             ROUND(e.elo_clay,   0) AS elo_clay,
             ROUND(e.elo_grass,  0) AS elo_grass,
             e.last_match_date
         FROM v_elo_latest e
-        JOIN v_player_names pn ON e.player_id = pn.player_id
-        JOIN v_players p       ON e.player_id = p.player_id
-        WHERE p.circuit = ?
-          AND e.{surface_col} IS NOT NULL
+        JOIN player_unique pu ON e.player_id = pu.player_id
+        WHERE e.{surface_col} IS NOT NULL
+          AND pu.joueur <> ''
         ORDER BY e.{surface_col} DESC NULLS LAST
         LIMIT ?
     """
