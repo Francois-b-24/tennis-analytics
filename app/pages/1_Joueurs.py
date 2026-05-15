@@ -33,7 +33,13 @@ from components.plotly_theme import (
     TENNIS_LINE,
     apply_tennis_theme,
 )
-from components.widgets import format_date_dd_mm_yyyy, format_elo, inject_global_css, page_info
+from components.widgets import (
+    disambiguate_player_labels,
+    format_date_dd_mm_yyyy,
+    format_elo,
+    inject_global_css,
+    page_info,
+)
 from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Joueurs — Tennis Analytics", layout="wide")
@@ -47,22 +53,27 @@ def _connection() -> duckdb.DuckDBPyConnection:
 
 @st.cache_data(show_spinner=False)
 def _player_options(_root: str, circuit: str) -> pd.DataFrame:
+    """Liste dédupliquée des joueurs d'un circuit avec leur code pays IOC."""
     conn = _connection()
+    cols = conn.execute("DESCRIBE v_players").df()["column_name"].tolist()
+    pays_col = "ioc" if "ioc" in cols else ("country_code" if "country_code" in cols else "NULL")
+    sql = f"""
+        SELECT player_id,
+               TRIM(CONCAT(COALESCE(ANY_VALUE(name_first), ''),
+                           ' ',
+                           COALESCE(ANY_VALUE(name_last), ''))) AS full_name,
+               ANY_VALUE({pays_col}) AS ioc
+        FROM v_players
+        WHERE circuit = ?
+        GROUP BY player_id
+        HAVING TRIM(CONCAT(COALESCE(ANY_VALUE(name_first), ''),
+                           ' ',
+                           COALESCE(ANY_VALUE(name_last), ''))) <> ''
+    """
     try:
-        df = conn.execute(
-            """
-            SELECT pn.player_id, pn.full_name
-            FROM v_player_names pn
-            JOIN v_players p USING (player_id)
-            WHERE p.circuit = ?
-              AND TRIM(pn.full_name) <> ''
-            ORDER BY pn.full_name
-            """,
-            [circuit],
-        ).df()
-        return df.drop_duplicates(subset=["full_name"])
+        return conn.execute(sql, [circuit]).df()
     except duckdb.Error:
-        return pd.DataFrame(columns=["player_id", "full_name"])
+        return pd.DataFrame(columns=["player_id", "full_name", "ioc"])
 
 
 @st.cache_data(show_spinner=False)
@@ -178,9 +189,14 @@ if players.empty:
     st.warning("Aucun joueur disponible. Lancez l'ingestion pour construire les parquets.")
     st.stop()
 
-mapping = dict(zip(players["full_name"], players["player_id"], strict=False))
-selected_name = st.selectbox("Sélectionner un joueur", list(mapping.keys()), key="joueurs_player")
-player_id = int(mapping[selected_name])
+players = disambiguate_player_labels(players)
+mapping = dict(zip(players["label"], players["player_id"], strict=False))
+selected_label = st.selectbox(
+    "Sélectionner un joueur", list(mapping.keys()), key="joueurs_player"
+)
+player_id = int(mapping[selected_label])
+# Conserve le nom propre (sans IOC) pour les titres et affichages
+selected_name = players.loc[players["player_id"] == player_id, "full_name"].iloc[0]
 
 # ── Section A — Carte d'identité ──────────────────────────────────────────────
 identity = _identity(str(_ROOT), player_id)

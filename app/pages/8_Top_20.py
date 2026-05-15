@@ -250,7 +250,16 @@ st.divider()
 # ── Section 2 : Focus joueur ─────────────────────────────────────────────────
 st.subheader("Zoom sur un joueur")
 
-mapping = dict(zip(df_top["joueur"], df_top["player_id"], strict=False))
+# Construit un label unique : "Joueur (PAYS)" pour eviter toute collision
+def _build_label(row: pd.Series) -> str:
+    name = str(row["joueur"]).strip()
+    pays = str(row.get("pays", "")).strip()
+    return f"{name} ({pays})" if pays and pays != "—" else name
+
+
+df_top = df_top.copy()
+df_top["_label"] = df_top.apply(_build_label, axis=1)
+mapping = dict(zip(df_top["_label"], df_top["player_id"], strict=False))
 selected = st.selectbox(
     "Sélectionner un joueur",
     list(mapping.keys()),
@@ -258,8 +267,9 @@ selected = st.selectbox(
 )
 pid = int(mapping[selected])
 
-# Ligne du joueur
-row = df_top[df_top["joueur"] == selected].iloc[0]
+# Ligne du joueur (recherche par player_id pour eviter toute ambiguite)
+row = df_top[df_top["player_id"] == pid].iloc[0]
+selected_name = str(row["joueur"])
 
 # Stats carrière
 career = _player_career_stats(str(_ROOT), pid)
@@ -318,7 +328,7 @@ with col_a:
         fill="toself",
         line=dict(color=TENNIS_HARD, width=2),
         fillcolor="rgba(31, 78, 121, 0.25)",
-        name=selected,
+        name=selected_name,
     ))
     fig_radar.update_layout(
         polar=dict(

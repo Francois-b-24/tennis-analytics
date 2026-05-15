@@ -117,12 +117,78 @@ def load_player_options(connection: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     return frame.drop_duplicates(subset=["full_name"])
 
 
+def disambiguate_player_labels(df: pd.DataFrame) -> pd.DataFrame:
+    """Ajoute une colonne `label` unique par joueur pour les selectbox.
+
+    - Filtre les noms vides ou trop courts (< 3 caractères = juste une initiale).
+    - Ajoute le code pays IOC entre parenthèses pour les homonymes : `John Smith (USA)`.
+    - Si même les `(IOC)` ne suffisent pas (joueurs vraiment indistinguables),
+      ajoute le `player_id` en suffixe pour garantir l'unicité du label.
+
+    Args:
+        df: DataFrame avec colonnes `player_id`, `full_name` et optionnellement `ioc`/`pays`.
+
+    Returns:
+        Le DataFrame avec une colonne `label` unique, filtré et trié par label.
+    """
+    if df.empty or "full_name" not in df.columns:
+        return df.assign(label=df.get("full_name", []))
+
+    # Détecter la colonne pays (selon schéma)
+    pays_col = None
+    for candidate in ("ioc", "pays", "country_code"):
+        if candidate in df.columns:
+            pays_col = candidate
+            break
+
+    out = df.copy()
+    out["full_name"] = out["full_name"].astype(str).str.strip()
+    out = out[out["full_name"].str.len() >= 3]
+
+    if pays_col:
+        out["_pays"] = out[pays_col].fillna("").astype(str).str.strip().str.upper()
+    else:
+        out["_pays"] = ""
+
+    # Étape 1 : ajouter (IOC) pour les homonymes
+    name_counts = out["full_name"].value_counts()
+    duplicates = set(name_counts[name_counts > 1].index)
+
+    def _label_with_country(row: pd.Series) -> str:
+        name = row["full_name"]
+        if name in duplicates and row["_pays"]:
+            return f"{name} ({row['_pays']})"
+        return name
+
+    out["label"] = out.apply(_label_with_country, axis=1)
+
+    # Étape 2 : si encore des doublons, ajouter #player_id pour garantir l'unicité
+    label_counts = out["label"].value_counts()
+    still_duplicate = set(label_counts[label_counts > 1].index)
+    if still_duplicate:
+        out.loc[out["label"].isin(still_duplicate), "label"] = (
+            out.loc[out["label"].isin(still_duplicate), "label"]
+            + " #"
+            + out.loc[out["label"].isin(still_duplicate), "player_id"].astype(str)
+        )
+
+    return out.drop(columns=["_pays"]).sort_values("label").reset_index(drop=True)
+
+
 def player_selectbox(label: str, options: pd.DataFrame, key: str) -> int | None:
-    """Sélecteur Streamlit basé sur une liste de joueurs."""
+    """Sélecteur Streamlit basé sur une liste de joueurs (avec désambiguïsation)."""
     if options.empty:
         st.warning("Aucun joueur disponible : lancez l'ingestion pour construire les parquets.")
         return None
-    mapping = dict(zip(options["full_name"], options["player_id"], strict=False))
+
+    # Désambig si la colonne `label` n'est pas déjà construite
+    if "label" not in options.columns:
+        options = disambiguate_player_labels(options)
+        if options.empty:
+            st.warning("Aucun joueur valide disponible.")
+            return None
+
+    mapping = dict(zip(options["label"], options["player_id"], strict=False))
     choice = st.selectbox(label, list(mapping.keys()), key=key)
     return int(mapping[choice])
 

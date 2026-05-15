@@ -40,22 +40,27 @@ from db.duckdb_session import create_connection
 
 @st.cache_data(show_spinner=False)
 def _player_options_circuit(_root: str, circuit: str) -> pd.DataFrame:
+    """Liste joueurs avec déduplication par player_id et code pays IOC."""
     conn = _connection()
-    if circuit == "Tous":
-        return load_player_options(conn)
+    cols = conn.execute("DESCRIBE v_players").df()["column_name"].tolist()
+    pays_col = "ioc" if "ioc" in cols else ("country_code" if "country_code" in cols else "NULL")
+    where_circuit = "" if circuit == "Tous" else "WHERE circuit = ?"
+    sql = f"""
+        SELECT player_id,
+               TRIM(CONCAT(COALESCE(ANY_VALUE(name_first), ''),
+                           ' ',
+                           COALESCE(ANY_VALUE(name_last), ''))) AS full_name,
+               ANY_VALUE({pays_col}) AS ioc
+        FROM v_players
+        {where_circuit}
+        GROUP BY player_id
+        HAVING TRIM(CONCAT(COALESCE(ANY_VALUE(name_first), ''),
+                           ' ',
+                           COALESCE(ANY_VALUE(name_last), ''))) <> ''
+    """
     try:
-        df = conn.execute(
-            """
-            SELECT pn.player_id, pn.full_name
-            FROM v_player_names pn
-            JOIN v_players p USING (player_id)
-            WHERE p.circuit = ?
-              AND TRIM(pn.full_name) <> ''
-            ORDER BY pn.full_name
-            """,
-            [circuit],
-        ).df()
-        return df.drop_duplicates(subset=["full_name"])
+        params = [] if circuit == "Tous" else [circuit]
+        return conn.execute(sql, params).df()
     except duckdb.Error:
         return load_player_options(conn)
 

@@ -171,17 +171,24 @@ if bundle is None:
 connection = _connection()
 
 try:
+    cols = connection.execute("DESCRIBE v_players").df()["column_name"].tolist()
+    pays_col = "ioc" if "ioc" in cols else ("country_code" if "country_code" in cols else "NULL")
     players = connection.execute(
-        """
-        SELECT pn.player_id, pn.full_name
-        FROM v_player_names pn
-        JOIN v_players p USING (player_id)
-        WHERE p.circuit = ?
-          AND TRIM(pn.full_name) <> ''
-        ORDER BY pn.full_name
+        f"""
+        SELECT player_id,
+               TRIM(CONCAT(COALESCE(ANY_VALUE(name_first), ''),
+                           ' ',
+                           COALESCE(ANY_VALUE(name_last), ''))) AS full_name,
+               ANY_VALUE({pays_col}) AS ioc
+        FROM v_players
+        WHERE circuit = ?
+        GROUP BY player_id
+        HAVING TRIM(CONCAT(COALESCE(ANY_VALUE(name_first), ''),
+                           ' ',
+                           COALESCE(ANY_VALUE(name_last), ''))) <> ''
         """,
         [circuit],
-    ).df().drop_duplicates(subset=["full_name"])
+    ).df()
 except duckdb.Error:
     players = load_player_options(connection)
 
