@@ -32,7 +32,7 @@ from components.plotly_theme import (
     TENNIS_LINE,
     apply_tennis_theme,
 )
-from components.widgets import format_elo, inject_global_css, page_info
+from components.widgets import country_flag_with_code, format_elo, inject_global_css, page_info
 from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Top 20 — Tennis Analytics", layout="wide")
@@ -226,6 +226,9 @@ st.subheader(f"Classement — {circuit_filter}")
 display_df = df_top.copy()
 if circuit_filter == "Les deux":
     display_df["Circuit"] = ["ATP"] * len(top_atp) + ["WTA"] * len(top_wta)
+
+# Conversion IOC → emoji drapeau + code
+display_df["pays"] = display_df["pays"].apply(country_flag_with_code)
 
 display_df = display_df.rename(columns={
     "rang": "Rang",

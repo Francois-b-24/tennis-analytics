@@ -11,6 +11,68 @@ import pandas as pd
 import streamlit as st
 
 
+# ── Mapping codes IOC (3 lettres) → ISO 3166-1 alpha-2 (2 lettres) ───────────
+# Les emojis drapeaux sont composés à partir des 2 lettres ISO via les Regional
+# Indicator Symbols (caractères Unicode 🇦-🇿).
+_IOC_TO_ISO2: dict[str, str] = {
+    # Top tennis nations
+    "USA": "US", "FRA": "FR", "ESP": "ES", "ITA": "IT", "GER": "DE",
+    "GBR": "GB", "AUS": "AU", "RUS": "RU", "SRB": "RS", "SUI": "CH",
+    "ARG": "AR", "BRA": "BR", "CAN": "CA", "CHN": "CN", "JPN": "JP",
+    "CRO": "HR", "POL": "PL", "BEL": "BE", "NED": "NL", "SWE": "SE",
+    "AUT": "AT", "CZE": "CZ", "SVK": "SK", "HUN": "HU", "ROU": "RO",
+    "BUL": "BG", "GRE": "GR", "POR": "PT", "DEN": "DK", "FIN": "FI",
+    "NOR": "NO", "IRL": "IE", "ISR": "IL", "TUR": "TR", "UKR": "UA",
+    "BLR": "BY", "KAZ": "KZ", "GEO": "GE", "ARM": "AM", "MDA": "MD",
+    "EST": "EE", "LAT": "LV", "LTU": "LT", "SLO": "SI", "BIH": "BA",
+    "MKD": "MK", "MNE": "ME", "ALB": "AL", "CYP": "CY", "MLT": "MT",
+    "LUX": "LU", "ISL": "IS", "MEX": "MX", "CHI": "CL", "COL": "CO",
+    "PER": "PE", "VEN": "VE", "URU": "UY", "PAR": "PY", "BOL": "BO",
+    "ECU": "EC", "DOM": "DO", "PUR": "PR", "CUB": "CU", "JAM": "JM",
+    "BAH": "BS", "TRI": "TT", "CRC": "CR", "GUA": "GT", "SLV": "SV",
+    "PAN": "PA", "HON": "HN", "RSA": "ZA", "MAR": "MA", "TUN": "TN",
+    "ALG": "DZ", "EGY": "EG", "NGR": "NG", "KEN": "KE", "CIV": "CI",
+    "SEN": "SN", "CMR": "CM", "GHA": "GH", "ZIM": "ZW", "IND": "IN",
+    "PAK": "PK", "BAN": "BD", "SRI": "LK", "THA": "TH", "VIE": "VN",
+    "PHI": "PH", "INA": "ID", "MAS": "MY", "SGP": "SG", "TPE": "TW",
+    "HKG": "HK", "KOR": "KR", "PRK": "KP", "UAE": "AE", "KSA": "SA",
+    "QAT": "QA", "KUW": "KW", "BRN": "BH", "OMA": "OM", "JOR": "JO",
+    "LBN": "LB", "SYR": "SY", "IRQ": "IQ", "IRI": "IR", "AFG": "AF",
+    "NZL": "NZ", "FIJ": "FJ",
+}
+
+
+def country_flag(ioc_code: str | None) -> str:
+    """Convertit un code pays IOC (3 lettres) en emoji drapeau Unicode.
+
+    Args:
+        ioc_code: Code IOC à 3 lettres (ex : 'FRA', 'ESP', 'USA').
+
+    Returns:
+        Emoji drapeau (ex : '🇫🇷') ou code original si pas de mapping connu.
+    """
+    if not ioc_code or ioc_code in ("—", "nan", "None", ""):
+        return "—"
+    code = str(ioc_code).strip().upper()
+    iso2 = _IOC_TO_ISO2.get(code)
+    if not iso2:
+        return code  # fallback : on garde le code IOC visible
+    # Construit l'emoji en combinant deux Regional Indicator Symbols
+    # 'A' = U+1F1E6, donc 'A' + decalage vers la lettre cible
+    return "".join(chr(ord(c) - ord("A") + 0x1F1E6) for c in iso2)
+
+
+def country_flag_with_code(ioc_code: str | None) -> str:
+    """Retourne 'drapeau + code IOC' (ex : '🇫🇷 FRA') pour affichage tableau."""
+    if not ioc_code or ioc_code in ("—", "nan", "None", ""):
+        return "—"
+    flag = country_flag(ioc_code)
+    code = str(ioc_code).strip().upper()
+    if flag == code:  # pas de mapping trouvé
+        return code
+    return f"{flag} {code}"
+
+
 def format_date_dd_mm_yyyy(value: int | float | None) -> str:
     """Formate un entier `YYYYMMDD` en `DD/MM/YYYY`."""
     if value is None:
