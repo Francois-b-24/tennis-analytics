@@ -62,11 +62,30 @@ def create_connection(project_root: Path | None = None) -> duckdb.DuckDBPyConnec
 
     players_path = processed / "players.parquet"
     if players_path.exists():
-        _register_parquet_view(connection, "v_players", players_path)
+        # On enregistre le parquet brut sous v_players_raw, puis on construit
+        # v_players qui expose les joueurs « BOTH » comme appartenant à la fois
+        # à ATP et WTA — pour que les requêtes WHERE circuit = 'ATP' / 'WTA'
+        # restent compatibles sans modification.
+        _register_parquet_view(connection, "v_players_raw", players_path)
+        connection.execute(
+            """
+            CREATE OR REPLACE VIEW v_players AS
+            SELECT player_id, name_first, name_last, hand, dob, ioc, height,
+                   wikidata_id,
+                   CASE WHEN circuit = 'BOTH' THEN 'ATP' ELSE circuit END AS circuit
+            FROM v_players_raw
+            UNION ALL
+            SELECT player_id, name_first, name_last, hand, dob, ioc, height,
+                   wikidata_id,
+                   'WTA' AS circuit
+            FROM v_players_raw
+            WHERE circuit = 'BOTH';
+            """
+        )
         connection.execute(
             """
             CREATE OR REPLACE VIEW v_player_names AS
-            SELECT
+            SELECT DISTINCT
                 player_id,
                 TRIM(CONCAT(COALESCE(name_first, ''), ' ', COALESCE(name_last, ''))) AS full_name,
                 circuit

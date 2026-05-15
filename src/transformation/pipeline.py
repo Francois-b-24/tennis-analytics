@@ -52,6 +52,7 @@ def build_processed_tables(project_root: Path) -> None:
     matches["tourney_date_int"] = pd.to_numeric(matches["tourney_date"], errors="coerce").astype(
         "Int64"
     )
+    # match_uid inclut le round pour distinguer RR vs F (Tour Finals notamment)
     matches["match_uid"] = (
         matches["circuit"].astype(str)
         + "_"
@@ -60,19 +61,48 @@ def build_processed_tables(project_root: Path) -> None:
         + matches["winner_id"].astype(str)
         + "_"
         + matches["loser_id"].astype(str)
+        + "_"
+        + matches["round"].fillna("").astype(str)
     )
 
     # Les colonnes *_seed contiennent des valeurs mixtes (entiers + 'WC', 'Q', 'LL'…)
-    # PyArrow ne peut pas les convertir en double — on force en numérique, le reste → NaN
     for col in ("winner_seed", "loser_seed"):
         if col in matches.columns:
             matches[col] = pd.to_numeric(matches[col], errors="coerce")
+
+    # Suppression des doublons restants (matchs Davis Cup parfois loggés en double)
+    before = len(matches)
+    matches = matches.drop_duplicates(subset=["match_uid"])
+    if before - len(matches) > 0:
+        logger.info("Doublons matches.parquet supprimés : {}", before - len(matches))
 
     matches.to_parquet(processed / "matches.parquet", index=False)
     logger.info("Table `matches` écrite ({} lignes).", len(matches))
 
     players = _concat_parquet_glob(interim, "*_players.parquet")
     if not players.empty:
+        # Dédup : un joueur peut apparaître dans atp_players ET wta_players
+        # (cas du double mixte). On agrège pour avoir 1 ligne par player_id.
+        before = len(players)
+
+        def _first_non_null(s: pd.Series) -> object:
+            s = s.dropna()
+            return s.iloc[0] if len(s) > 0 else None
+
+        agg_dict = {
+            col: _first_non_null
+            for col in players.columns
+            if col not in ("player_id", "circuit")
+        }
+        agg_dict["circuit"] = lambda s: "BOTH" if s.nunique() > 1 else s.iloc[0]
+        players = players.groupby("player_id", as_index=False).agg(agg_dict)
+        logger.info(
+            "Doublons players.parquet fusionnés : {} → {} ({} BOTH)",
+            before,
+            len(players),
+            int((players["circuit"] == "BOTH").sum()),
+        )
+
         players.to_parquet(processed / "players.parquet", index=False)
         logger.info("Table `players` écrite ({} lignes).", len(players))
 
