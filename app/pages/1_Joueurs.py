@@ -80,7 +80,7 @@ def _player_options(_root: str, circuit: str) -> pd.DataFrame:
 def _identity(_root: str, player_id: int) -> pd.DataFrame:
     return _connection().execute(
         """
-        SELECT p.name_first, p.name_last, p.country_code, p.dob, p.circuit,
+        SELECT p.name_first, p.name_last, p.ioc AS pays, p.dob, p.circuit,
                e.elo_global, e.elo_hard, e.elo_clay, e.elo_grass, e.last_match_date
         FROM v_players p
         LEFT JOIN v_elo_latest e ON p.player_id = e.player_id
@@ -212,7 +212,7 @@ col_bio, col_elo = st.columns([2, 1])
 with col_bio:
     dob_raw = row.get("dob")
     dob_str = format_date_dd_mm_yyyy(int(dob_raw)) if dob_raw and str(dob_raw) not in ("nan", "None", "") else "—"
-    country = row.get("country_code") or "—"
+    country = row.get("pays") or "—"
     st.markdown(f"## {selected_name}")
     st.markdown(f"**Nationalité :** {country} &nbsp;|&nbsp; **Naissance :** {dob_str} &nbsp;|&nbsp; **Circuit :** {circuit}")
 
