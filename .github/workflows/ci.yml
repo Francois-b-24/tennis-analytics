@@ -27,11 +27,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
 
-      - name: Installer les dépendances de l'app
+      - name: Installer les dépendances (runtime + dev)
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest
+          pip install -e ".[dev]"
 
       - name: Vérifier que les modules de l'app importent
         run: |
@@ -42,8 +42,20 @@ jobs:
           from db.duckdb_session import create_connection
           from components.widgets import format_elo, country_flag, disambiguate_player_labels
           from components.plotly_theme import apply_tennis_theme
+          from ingestion.schemas import MatchesSchema, PlayersSchema, RankingsSchema
+          from modeling.win_probability import train_calibrated_model
+          from ratings.elo import EloEngine
           print('Imports OK')
           "
+
+      - name: Lint (Ruff)
+        run: ruff check src app tests
+
+      - name: Format check (Black)
+        run: black --check src app tests
+
+      - name: Tests + couverture
+        run: pytest --cov=src --cov-report=term-missing --cov-fail-under=40 tests/
 
       - name: Vérifier la taille des parquets versionnés
         env:

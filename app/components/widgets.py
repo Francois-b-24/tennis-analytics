@@ -10,35 +10,123 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
-
 # ── Mapping codes IOC (3 lettres) → ISO 3166-1 alpha-2 (2 lettres) ───────────
 # Les emojis drapeaux sont composés à partir des 2 lettres ISO via les Regional
 # Indicator Symbols (caractères Unicode 🇦-🇿).
 _IOC_TO_ISO2: dict[str, str] = {
     # Top tennis nations
-    "USA": "US", "FRA": "FR", "ESP": "ES", "ITA": "IT", "GER": "DE",
-    "GBR": "GB", "AUS": "AU", "RUS": "RU", "SRB": "RS", "SUI": "CH",
-    "ARG": "AR", "BRA": "BR", "CAN": "CA", "CHN": "CN", "JPN": "JP",
-    "CRO": "HR", "POL": "PL", "BEL": "BE", "NED": "NL", "SWE": "SE",
-    "AUT": "AT", "CZE": "CZ", "SVK": "SK", "HUN": "HU", "ROU": "RO",
-    "BUL": "BG", "GRE": "GR", "POR": "PT", "DEN": "DK", "FIN": "FI",
-    "NOR": "NO", "IRL": "IE", "ISR": "IL", "TUR": "TR", "UKR": "UA",
-    "BLR": "BY", "KAZ": "KZ", "GEO": "GE", "ARM": "AM", "MDA": "MD",
-    "EST": "EE", "LAT": "LV", "LTU": "LT", "SLO": "SI", "BIH": "BA",
-    "MKD": "MK", "MNE": "ME", "ALB": "AL", "CYP": "CY", "MLT": "MT",
-    "LUX": "LU", "ISL": "IS", "MEX": "MX", "CHI": "CL", "COL": "CO",
-    "PER": "PE", "VEN": "VE", "URU": "UY", "PAR": "PY", "BOL": "BO",
-    "ECU": "EC", "DOM": "DO", "PUR": "PR", "CUB": "CU", "JAM": "JM",
-    "BAH": "BS", "TRI": "TT", "CRC": "CR", "GUA": "GT", "SLV": "SV",
-    "PAN": "PA", "HON": "HN", "RSA": "ZA", "MAR": "MA", "TUN": "TN",
-    "ALG": "DZ", "EGY": "EG", "NGR": "NG", "KEN": "KE", "CIV": "CI",
-    "SEN": "SN", "CMR": "CM", "GHA": "GH", "ZIM": "ZW", "IND": "IN",
-    "PAK": "PK", "BAN": "BD", "SRI": "LK", "THA": "TH", "VIE": "VN",
-    "PHI": "PH", "INA": "ID", "MAS": "MY", "SGP": "SG", "TPE": "TW",
-    "HKG": "HK", "KOR": "KR", "PRK": "KP", "UAE": "AE", "KSA": "SA",
-    "QAT": "QA", "KUW": "KW", "BRN": "BH", "OMA": "OM", "JOR": "JO",
-    "LBN": "LB", "SYR": "SY", "IRQ": "IQ", "IRI": "IR", "AFG": "AF",
-    "NZL": "NZ", "FIJ": "FJ",
+    "USA": "US",
+    "FRA": "FR",
+    "ESP": "ES",
+    "ITA": "IT",
+    "GER": "DE",
+    "GBR": "GB",
+    "AUS": "AU",
+    "RUS": "RU",
+    "SRB": "RS",
+    "SUI": "CH",
+    "ARG": "AR",
+    "BRA": "BR",
+    "CAN": "CA",
+    "CHN": "CN",
+    "JPN": "JP",
+    "CRO": "HR",
+    "POL": "PL",
+    "BEL": "BE",
+    "NED": "NL",
+    "SWE": "SE",
+    "AUT": "AT",
+    "CZE": "CZ",
+    "SVK": "SK",
+    "HUN": "HU",
+    "ROU": "RO",
+    "BUL": "BG",
+    "GRE": "GR",
+    "POR": "PT",
+    "DEN": "DK",
+    "FIN": "FI",
+    "NOR": "NO",
+    "IRL": "IE",
+    "ISR": "IL",
+    "TUR": "TR",
+    "UKR": "UA",
+    "BLR": "BY",
+    "KAZ": "KZ",
+    "GEO": "GE",
+    "ARM": "AM",
+    "MDA": "MD",
+    "EST": "EE",
+    "LAT": "LV",
+    "LTU": "LT",
+    "SLO": "SI",
+    "BIH": "BA",
+    "MKD": "MK",
+    "MNE": "ME",
+    "ALB": "AL",
+    "CYP": "CY",
+    "MLT": "MT",
+    "LUX": "LU",
+    "ISL": "IS",
+    "MEX": "MX",
+    "CHI": "CL",
+    "COL": "CO",
+    "PER": "PE",
+    "VEN": "VE",
+    "URU": "UY",
+    "PAR": "PY",
+    "BOL": "BO",
+    "ECU": "EC",
+    "DOM": "DO",
+    "PUR": "PR",
+    "CUB": "CU",
+    "JAM": "JM",
+    "BAH": "BS",
+    "TRI": "TT",
+    "CRC": "CR",
+    "GUA": "GT",
+    "SLV": "SV",
+    "PAN": "PA",
+    "HON": "HN",
+    "RSA": "ZA",
+    "MAR": "MA",
+    "TUN": "TN",
+    "ALG": "DZ",
+    "EGY": "EG",
+    "NGR": "NG",
+    "KEN": "KE",
+    "CIV": "CI",
+    "SEN": "SN",
+    "CMR": "CM",
+    "GHA": "GH",
+    "ZIM": "ZW",
+    "IND": "IN",
+    "PAK": "PK",
+    "BAN": "BD",
+    "SRI": "LK",
+    "THA": "TH",
+    "VIE": "VN",
+    "PHI": "PH",
+    "INA": "ID",
+    "MAS": "MY",
+    "SGP": "SG",
+    "TPE": "TW",
+    "HKG": "HK",
+    "KOR": "KR",
+    "PRK": "KP",
+    "UAE": "AE",
+    "KSA": "SA",
+    "QAT": "QA",
+    "KUW": "KW",
+    "BRN": "BH",
+    "OMA": "OM",
+    "JOR": "JO",
+    "LBN": "LB",
+    "SYR": "SY",
+    "IRQ": "IQ",
+    "IRI": "IR",
+    "AFG": "AF",
+    "NZL": "NZ",
+    "FIJ": "FJ",
 }
 
 
@@ -115,6 +203,63 @@ def load_player_options(connection: duckdb.DuckDBPyConnection) -> pd.DataFrame:
         """
     ).df()
     return frame.drop_duplicates(subset=["full_name"])
+
+
+def load_active_players(
+    connection: duckdb.DuckDBPyConnection,
+    circuit: str | None = None,
+    min_matches: int = 10,
+) -> pd.DataFrame:
+    """Retourne les joueurs ayant disputé au moins `min_matches` matchs.
+
+    Pré-filtre la liste pour rendre la recherche utilisable (sinon plus de
+    100k joueurs Sackmann incluent des juniors et qualifiés inconnus).
+
+    Args:
+        connection: Connexion DuckDB active.
+        circuit: 'ATP', 'WTA' ou None ('Tous').
+        min_matches: Seuil minimum de matchs joués (winner_id + loser_id).
+
+    Returns:
+        DataFrame avec player_id, full_name, ioc, total_matches, last_match_date.
+    """
+    circuit_clause = ""
+    params: list[Any] = [min_matches]
+    if circuit in ("ATP", "WTA"):
+        circuit_clause = "AND m.circuit = ?"
+        params.insert(0, circuit)
+
+    sql = f"""
+        WITH counts AS (
+            SELECT player_id, COUNT(*) AS total_matches, MAX(tourney_date) AS last_match_date
+            FROM (
+                SELECT winner_id AS player_id, tourney_date, circuit FROM v_matches
+                UNION ALL
+                SELECT loser_id  AS player_id, tourney_date, circuit FROM v_matches
+            ) m
+            WHERE 1=1 {circuit_clause}
+            GROUP BY player_id
+            HAVING COUNT(*) >= ?
+        )
+        SELECT
+            c.player_id,
+            TRIM(CONCAT(COALESCE(ANY_VALUE(p.name_first), ''), ' ',
+                        COALESCE(ANY_VALUE(p.name_last), ''))) AS full_name,
+            ANY_VALUE(p.ioc) AS ioc,
+            c.total_matches,
+            c.last_match_date
+        FROM counts c
+        LEFT JOIN v_players p ON c.player_id = p.player_id
+        GROUP BY c.player_id, c.total_matches, c.last_match_date
+        HAVING TRIM(full_name) <> ''
+        ORDER BY full_name
+    """
+    try:
+        return connection.execute(sql, params).df()
+    except duckdb.Error:
+        return pd.DataFrame(
+            columns=["player_id", "full_name", "ioc", "total_matches", "last_match_date"]
+        )
 
 
 def _is_valid_player_name(name: str) -> bool:
@@ -197,13 +342,35 @@ def disambiguate_player_labels(df: pd.DataFrame) -> pd.DataFrame:
     return out.drop(columns=["_pays"]).sort_values("label").reset_index(drop=True)
 
 
-def player_selectbox(label: str, options: pd.DataFrame, key: str) -> int | None:
-    """Sélecteur Streamlit basé sur une liste de joueurs (avec désambiguïsation)."""
+def player_selectbox(
+    label: str,
+    options: pd.DataFrame,
+    key: str,
+    *,
+    help_text: str | None = "💡 Tapez pour rechercher",
+    placeholder: str = "Rechercher un joueur…",
+    default_index: int = 0,
+) -> int | None:
+    """Sélecteur Streamlit searchable basé sur une liste de joueurs.
+
+    Streamlit selectbox supporte nativement la recherche par frappe clavier ;
+    on expose juste un placeholder et un help_text pour le signaler à l'utilisateur.
+
+    Args:
+        label: Libellé affiché au-dessus du selectbox.
+        options: DataFrame avec au moins `player_id` et `full_name` (+ optionnel `ioc`).
+        key: Clé Streamlit pour state.
+        help_text: Tooltip affiché à côté du label (None pour le retirer).
+        placeholder: Texte affiché quand rien n'est sélectionné (Streamlit 1.30+).
+        default_index: Index par défaut (0 = premier joueur après tri alphabétique).
+
+    Returns:
+        `player_id` sélectionné, ou None si la liste est vide.
+    """
     if options.empty:
         st.warning("Aucun joueur disponible : lancez l'ingestion pour construire les parquets.")
         return None
 
-    # Désambig si la colonne `label` n'est pas déjà construite
     if "label" not in options.columns:
         options = disambiguate_player_labels(options)
         if options.empty:
@@ -211,7 +378,15 @@ def player_selectbox(label: str, options: pd.DataFrame, key: str) -> int | None:
             return None
 
     mapping = dict(zip(options["label"], options["player_id"], strict=False))
-    choice = st.selectbox(label, list(mapping.keys()), key=key)
+    labels = list(mapping.keys())
+    choice = st.selectbox(
+        label,
+        labels,
+        index=min(default_index, len(labels) - 1),
+        key=key,
+        help=help_text,
+        placeholder=placeholder,
+    )
     return int(mapping[choice])
 
 
@@ -250,17 +425,65 @@ def format_elo(value: float | None) -> str:
     except (TypeError, ValueError):
         return "—"
     import math
+
     if math.isnan(f):
         return "—"
     return f"{int(round(f))}"
 
 
+_ALLOWED_CIRCUITS = frozenset({"ATP", "WTA", "Tous", "TOUS", "all", "ALL", ""})
+
+# Liste canonique des circuits proposés dans les selectbox.
+# `Tous` en premier : valeur par défaut cohérente entre toutes les pages.
+CIRCUITS: tuple[str, ...] = ("Tous", "ATP", "WTA")
+
+
+def circuit_selectbox(
+    label: str = "Circuit",
+    *,
+    default: str = "Tous",
+    key: str | None = None,
+    include_all: bool = True,
+) -> str:
+    """Selectbox circuit unifié et cohérent entre toutes les pages.
+
+    Args:
+        label: Libellé affiché (par défaut "Circuit").
+        default: Valeur initiale parmi `CIRCUITS`.
+        key: Clé Streamlit (auto si None).
+        include_all: Si False, retire 'Tous' (cas pages où c'est exclusif ATP/WTA).
+
+    Returns:
+        Valeur sélectionnée, garantie dans l'allowlist.
+    """
+    options: tuple[str, ...] = (
+        CIRCUITS if include_all else tuple(c for c in CIRCUITS if c != "Tous")
+    )
+    if default not in options:
+        default = options[0]
+    return st.sidebar.selectbox(label, options, index=options.index(default), key=key)
+
+
 def circuit_filter_sql(circuit: str) -> str:
     """Génère une clause SQL WHERE pour filtrer par circuit (ATP/WTA).
 
-    Ne jamais interpoler de valeurs issues directement de l'utilisateur sans
-    passer par cette fonction — seules 'ATP' et 'WTA' sont acceptées.
+    Sécurité : la valeur d'entrée est validée contre une allowlist stricte
+    avant interpolation. Toute valeur hors-allowlist lève ValueError pour
+    interdire toute injection SQL même accidentelle.
+
+    Args:
+        circuit: 'ATP', 'WTA' ou 'Tous'/'TOUS'/'all'/'' (clause vide).
+
+    Returns:
+        Clause SQL `AND circuit = 'ATP'` (ou vide). Sûre à concaténer.
+
+    Raises:
+        ValueError: si `circuit` n'est pas dans l'allowlist.
     """
+    if circuit not in _ALLOWED_CIRCUITS:
+        raise ValueError(
+            f"Circuit invalide: {circuit!r}. Valeurs autorisées: {sorted(_ALLOWED_CIRCUITS)}"
+        )
     if circuit in ("ATP", "WTA"):
         return f"AND circuit = '{circuit}'"
     return ""

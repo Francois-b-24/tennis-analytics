@@ -50,6 +50,9 @@ def _build_url(repo_path: str, filename: str) -> str:
     return f"{RAW_GITHUB}/{repo_path}/{filename}"
 
 
+MIN_CSV_BYTES: Final[int] = 64  # En-tête CSV minimal attendu
+
+
 def download_to(url: str, destination: Path, timeout_s: int = 60) -> DownloadResult:
     """Télécharge une ressource HTTP vers un fichier.
 
@@ -63,12 +66,19 @@ def download_to(url: str, destination: Path, timeout_s: int = 60) -> DownloadRes
 
     Raises:
         urllib.error.HTTPError: Si le serveur retourne une erreur HTTP.
+        ValueError: Si le payload est vide ou trop petit (réponse corrompue).
     """
     destination.parent.mkdir(parents=True, exist_ok=True)
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     logger.info("Téléchargement : {}", url)
     with urllib.request.urlopen(request, timeout=timeout_s) as response:
         payload = response.read()
+    if len(payload) < MIN_CSV_BYTES:
+        raise ValueError(
+            f"Réponse trop courte ({len(payload)} octets) pour {url}. "
+            "Probablement un fichier vide côté upstream."
+        )
+    destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_bytes(payload)
     logger.info("Fichier écrit : {} ({} octets)", destination, len(payload))
     return DownloadResult(url=url, destination=destination, bytes_written=len(payload))
@@ -98,6 +108,9 @@ def download_with_retries(url: str, destination: Path, attempts: int = 3) -> Dow
         except (TimeoutError, urllib.error.URLError, OSError) as exc:
             last_error = exc
             logger.warning("Erreur réseau (tentative {}/{}): {}", attempt, attempts, exc)
+        except ValueError as exc:
+            logger.warning("Payload vide/invalide (tentative {}/{}): {}", attempt, attempts, exc)
+            last_error = exc
         time.sleep(1.5 * attempt)
     if last_error:
         logger.error("Abandon du téléchargement après {} essais : {}", attempts, last_error)
@@ -190,10 +203,40 @@ def download_players(raw_dir: Path) -> list[Path]:
     return saved
 
 
+def _read_csv_safe(csv_path: Path) -> pd.DataFrame | None:
+    """Lit un CSV en tolérant les fichiers vides ou corrompus.
+
+    Returns:
+        DataFrame si lecture OK ; None si le fichier est vide/illisible
+        (le pipeline doit alors skipper proprement, pas crasher).
+    """
+    try:
+        size = csv_path.stat().st_size
+    except OSError as exc:
+        logger.warning("Fichier inaccessible : {} ({})", csv_path, exc)
+        return None
+    if size < MIN_CSV_BYTES:
+        logger.warning("Fichier vide ou tronqué (skip) : {} ({} octets)", csv_path, size)
+        return None
+    try:
+        return pd.read_csv(csv_path, low_memory=False)
+    except pd.errors.EmptyDataError:
+        logger.warning("CSV sans colonnes (skip) : {}", csv_path)
+        return None
+    except (pd.errors.ParserError, UnicodeDecodeError) as exc:
+        logger.warning("CSV illisible (skip) : {} ({})", csv_path, exc)
+        return None
+
+
 def csv_to_parquet_filtered_matches(csv_path: Path, parquet_path: Path, circuit: str) -> None:
     """Lit un CSV matchs, filtre 2010+, valide et écrit un parquet intermédiaire."""
-    frame = pd.read_csv(csv_path, low_memory=False)
+    frame = _read_csv_safe(csv_path)
+    if frame is None or frame.empty:
+        return
     frame = _filter_from_2010(frame)
+    if frame.empty:
+        logger.warning("Aucune ligne ≥ 2010 dans {} (skip)", csv_path)
+        return
     frame["circuit"] = circuit
     frame = _validate_matches(frame)
     parquet_path.parent.mkdir(parents=True, exist_ok=True)
@@ -202,18 +245,27 @@ def csv_to_parquet_filtered_matches(csv_path: Path, parquet_path: Path, circuit:
 
 
 def csv_to_parquet_players(csv_path: Path, parquet_path: Path, circuit: str) -> None:
-    frame = pd.read_csv(csv_path, low_memory=False)
+    frame = _read_csv_safe(csv_path)
+    if frame is None or frame.empty:
+        return
     frame["circuit"] = circuit
     frame = _validate_players(frame)
+    parquet_path.parent.mkdir(parents=True, exist_ok=True)
     frame.to_parquet(parquet_path, index=False)
     logger.info("Parquet joueurs écrit : {} ({} lignes)", parquet_path, len(frame))
 
 
 def csv_to_parquet_rankings(csv_path: Path, parquet_path: Path, circuit: str) -> None:
-    frame = pd.read_csv(csv_path, low_memory=False)
+    frame = _read_csv_safe(csv_path)
+    if frame is None or frame.empty:
+        return
     frame["circuit"] = circuit
     frame = _validate_rankings(frame)
     frame = frame.loc[frame["ranking_date"] >= MIN_TOURNEY_DATE].copy()
+    if frame.empty:
+        logger.warning("Aucune ligne classements ≥ 2010 dans {} (skip)", csv_path)
+        return
+    parquet_path.parent.mkdir(parents=True, exist_ok=True)
     frame.to_parquet(parquet_path, index=False)
     logger.info("Parquet classements écrit : {} ({} lignes)", parquet_path, len(frame))
 

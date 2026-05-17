@@ -2,22 +2,13 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
-_APP_DIR = Path(__file__).resolve().parents[1]
-_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from components._bootstrap import init_app
 
-from dotenv import load_dotenv
-
-load_dotenv(_ROOT / ".env")
-os.environ.setdefault("ROOT_PATH", str(_ROOT))
-
-_SRC = _ROOT / "src"
-for path in (_APP_DIR, _ROOT, _SRC):
-    if str(path) not in sys.path:
-        sys.path.insert(0, str(path))
+_ROOT, _ = init_app(__file__)
 
 import pandas as pd
 import streamlit as st
@@ -122,16 +113,18 @@ nerveux et réactif, un K faible le rend stable mais lent à réagir.
 """
 )
 
-df_k = pd.DataFrame({
-    "Valeur K": ["K = 40", "K = 20", "K = 10"],
-    "Comportement": ["Très nerveux", "Équilibré (standard)", "Très stable"],
-    "Cible": [
-        "Nouveaux joueurs (< 30 matchs)",
-        "Joueurs établis (30 à 100 matchs)",
-        "Joueurs vétérans (100+ matchs)",
-    ],
-    "Variation type": ["± 16 points", "± 8 points", "± 4 points"],
-})
+df_k = pd.DataFrame(
+    {
+        "Valeur K": ["K = 40", "K = 20", "K = 10"],
+        "Comportement": ["Très nerveux", "Équilibré (standard)", "Très stable"],
+        "Cible": [
+            "Nouveaux joueurs (< 30 matchs)",
+            "Joueurs établis (30 à 100 matchs)",
+            "Joueurs vétérans (100+ matchs)",
+        ],
+        "Variation type": ["± 16 points", "± 8 points", "± 4 points"],
+    }
+)
 st.dataframe(df_k, use_container_width=True, hide_index=True)
 
 st.markdown(
@@ -170,21 +163,23 @@ C'est pourquoi notre projet calcule **quatre ratings Elo en parallèle** :
 """
 )
 
-df_surf = pd.DataFrame({
-    "Type d'Elo": ["Elo global", "Elo dur", "Elo terre battue", "Elo gazon"],
-    "Périmètre": [
-        "Tous matchs confondus",
-        "Matchs sur surface dure",
-        "Matchs sur terre battue",
-        "Matchs sur gazon",
-    ],
-    "Usage": [
-        "Classement général tous terrains",
-        "Spécialisation hard-court",
-        "Spécialisation clay",
-        "Spécialisation grass",
-    ],
-})
+df_surf = pd.DataFrame(
+    {
+        "Type d'Elo": ["Elo global", "Elo dur", "Elo terre battue", "Elo gazon"],
+        "Périmètre": [
+            "Tous matchs confondus",
+            "Matchs sur surface dure",
+            "Matchs sur terre battue",
+            "Matchs sur gazon",
+        ],
+        "Usage": [
+            "Classement général tous terrains",
+            "Spécialisation hard-court",
+            "Spécialisation clay",
+            "Spécialisation grass",
+        ],
+    }
+)
 st.dataframe(df_surf, use_container_width=True, hide_index=True)
 
 st.divider()
@@ -192,23 +187,25 @@ st.divider()
 # ── Section 5 — Échelle indicative ───────────────────────────────────────────
 st.markdown("## 5. Échelle indicative des ratings Elo")
 
-df_echelle = pd.DataFrame({
-    "Plage Elo": ["2 200 +", "2 000 – 2 200", "1 800 – 2 000", "1 500 – 1 750", "1 500 (base)"],
-    "Niveau": [
-        "Élite mondiale (Top 5)",
-        "Top 20 mondial",
-        "Circuit pro principal",
-        "Circuit Challenger",
-        "Niveau de départ",
-    ],
-    "Exemples": [
-        "Sinner, Djokovic, Alcaraz, Świątek",
-        "Joueurs établis ATP/WTA",
-        "Top 100 mondial",
-        "Niveau pro hors Top 100",
-        "Nouveaux entrants",
-    ],
-})
+df_echelle = pd.DataFrame(
+    {
+        "Plage Elo": ["2 200 +", "2 000 – 2 200", "1 800 – 2 000", "1 500 – 1 750", "1 500 (base)"],
+        "Niveau": [
+            "Élite mondiale (Top 5)",
+            "Top 20 mondial",
+            "Circuit pro principal",
+            "Circuit Challenger",
+            "Niveau de départ",
+        ],
+        "Exemples": [
+            "Sinner, Djokovic, Alcaraz, Świątek",
+            "Joueurs établis ATP/WTA",
+            "Top 100 mondial",
+            "Niveau pro hors Top 100",
+            "Nouveaux entrants",
+        ],
+    }
+)
 st.dataframe(df_echelle, use_container_width=True, hide_index=True)
 
 st.caption(

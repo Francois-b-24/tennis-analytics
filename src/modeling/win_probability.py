@@ -13,7 +13,8 @@ from loguru import logger
 from sklearn.calibration import CalibratedClassifierCV, calibration_curve
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, brier_score_loss, log_loss
-from sklearn.model_selection import train_test_split
+
+RANDOM_STATE = 42
 
 
 @dataclass(slots=True)
@@ -193,8 +194,8 @@ def train_calibrated_model(
     Returns:
         Modèle scikit-learn calibré.
     """
-    folds = 2
-    base = LogisticRegression(max_iter=500, solver="lbfgs")
+    folds = 5
+    base = LogisticRegression(max_iter=500, solver="lbfgs", random_state=RANDOM_STATE)
     calibrated = CalibratedClassifierCV(base, method="isotonic", cv=folds)
     calibrated.fit(features, target)
     return calibrated
@@ -279,19 +280,56 @@ def train_and_persist(
     ]
 
     X_train, X_test, y_train, y_test = temporal_train_test_split(frame, split_date)
-    if len(X_test) < 10 or len(X_train) < 10:
-        X = frame[feature_cols]
-        y = frame["y_win"]
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.25, random_state=42, stratify=y
+    if len(X_train) < 10 or len(X_test) < 10:
+        raise ValueError(
+            "Split temporel insuffisant (train="
+            f"{len(X_train)}, test={len(X_test)}). "
+            "Augmentez le volume de matchs ou ajustez split_date. "
+            "Le fallback random_split a été retiré pour éviter tout leakage temporel."
         )
 
     model = train_calibrated_model(X_train, y_train)
     metrics = evaluate_backtest(model, X_test, y_test)
 
+    # Données de diagnostic : calibration curve + coefficients de la LogReg sous-jacente.
+    # Stockées dans le bundle pour être affichées dans la page Streamlit sans re-entraîner.
+    proba_test = model.predict_proba(X_test)[:, 1]
+    prob_pred, prob_true = calibration_plot_data(y_test.to_numpy(), proba_test, n_bins=10)
+
+    # Coefficients : on prend la moyenne sur les estimateurs calibrés (cv=5).
+    coefs: np.ndarray | None = None
+    try:
+        base_estimators = [c.estimator for c in model.calibrated_classifiers_]
+        coefs = np.mean([est.coef_[0] for est in base_estimators], axis=0)
+    except AttributeError:
+        coefs = None
+
+    diagnostics = {
+        "calibration": {
+            "prob_pred": prob_pred.tolist(),
+            "prob_true": prob_true.tolist(),
+        },
+        "feature_importance": (
+            {feat: float(c) for feat, c in zip(feature_cols, coefs, strict=False)}
+            if coefs is not None
+            else None
+        ),
+        "metrics": {
+            "brier": metrics.brier,
+            "log_loss": metrics.log_loss,
+            "accuracy": metrics.accuracy,
+            "n_test": metrics.n_samples,
+            "n_train": int(len(X_train)),
+            "split_date": int(split_date),
+        },
+    }
+
     out_dir = processed / "models"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "logreg_calibrated.joblib"
-    joblib.dump({"model": model, "features": feature_cols}, out_path)
-    logger.info("Modèle sauvegardé : {}", out_path)
+    joblib.dump(
+        {"model": model, "features": feature_cols, "diagnostics": diagnostics},
+        out_path,
+    )
+    logger.info("Modèle sauvegardé : {} (avec diagnostics)", out_path)
     return metrics, out_path

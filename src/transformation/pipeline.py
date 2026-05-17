@@ -52,16 +52,23 @@ def build_processed_tables(project_root: Path) -> None:
     matches["tourney_date_int"] = pd.to_numeric(matches["tourney_date"], errors="coerce").astype(
         "Int64"
     )
-    # match_uid inclut le round pour distinguer RR vs F (Tour Finals notamment)
+
+    # Garantir l'existence de la colonne `round` (RR vs F pour Tour Finals)
+    if "round" not in matches.columns:
+        matches["round"] = ""
+
+    # match_uid : séparateur '§' (absent des données Sackmann) pour éviter
+    # toute collision entre concaténations ambiguës (ex. id 1+2 vs 12+_).
+    sep = "§"
     matches["match_uid"] = (
         matches["circuit"].astype(str)
-        + "_"
+        + sep
         + matches["tourney_date_int"].astype(str)
-        + "_"
+        + sep
         + matches["winner_id"].astype(str)
-        + "_"
+        + sep
         + matches["loser_id"].astype(str)
-        + "_"
+        + sep
         + matches["round"].fillna("").astype(str)
     )
 
@@ -75,6 +82,8 @@ def build_processed_tables(project_root: Path) -> None:
     matches = matches.drop_duplicates(subset=["match_uid"])
     if before - len(matches) > 0:
         logger.info("Doublons matches.parquet supprimés : {}", before - len(matches))
+
+    assert matches["match_uid"].is_unique, "match_uid doit être unique après dédup"
 
     matches.to_parquet(processed / "matches.parquet", index=False)
     logger.info("Table `matches` écrite ({} lignes).", len(matches))
@@ -90,9 +99,7 @@ def build_processed_tables(project_root: Path) -> None:
             return s.iloc[0] if len(s) > 0 else None
 
         agg_dict = {
-            col: _first_non_null
-            for col in players.columns
-            if col not in ("player_id", "circuit")
+            col: _first_non_null for col in players.columns if col not in ("player_id", "circuit")
         }
         agg_dict["circuit"] = lambda s: "BOTH" if s.nunique() > 1 else s.iloc[0]
         players = players.groupby("player_id", as_index=False).agg(agg_dict)

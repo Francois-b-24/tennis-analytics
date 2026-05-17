@@ -2,22 +2,13 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
-_APP_DIR = Path(__file__).resolve().parents[1]
-_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from components._bootstrap import init_app
 
-from dotenv import load_dotenv
-
-load_dotenv(_ROOT / ".env")
-os.environ.setdefault("ROOT_PATH", str(_ROOT))
-
-_SRC = _ROOT / "src"
-for path in (_APP_DIR, _ROOT, _SRC):
-    if str(path) not in sys.path:
-        sys.path.insert(0, str(path))
+_ROOT, _ = init_app(__file__)
 
 import duckdb
 import pandas as pd
@@ -32,7 +23,12 @@ from components.plotly_theme import (
     TENNIS_LINE,
     apply_tennis_theme,
 )
-from components.widgets import circuit_filter_sql, inject_global_css, page_info
+from components.widgets import (
+    circuit_filter_sql,
+    circuit_selectbox,
+    inject_global_css,
+    page_info,
+)
 from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Insights — Tennis Analytics", layout="wide")
@@ -47,8 +43,10 @@ def _connection() -> duckdb.DuckDBPyConnection:
 @st.cache_data(show_spinner=False)
 def _aces_df_by_year(_root: str, circuit: str) -> pd.DataFrame:
     cf = circuit_filter_sql(circuit)
-    return _connection().execute(
-        f"""
+    return (
+        _connection()
+        .execute(
+            f"""
         SELECT
             CAST(tourney_date / 10000 AS INT) AS annee,
             ROUND(AVG(w_ace + l_ace), 2) AS aces_par_match,
@@ -61,14 +59,18 @@ def _aces_df_by_year(_root: str, circuit: str) -> pd.DataFrame:
         GROUP BY annee
         ORDER BY annee
         """
-    ).df()
+        )
+        .df()
+    )
 
 
 @st.cache_data(show_spinner=False)
 def _duration_by_year(_root: str, circuit: str) -> pd.DataFrame:
     cf = circuit_filter_sql(circuit)
-    return _connection().execute(
-        f"""
+    return (
+        _connection()
+        .execute(
+            f"""
         SELECT
             CAST(tourney_date / 10000 AS INT) AS annee,
             ROUND(AVG(minutes) FILTER (WHERE minutes > 0 AND minutes < 400), 0) AS duree_moy,
@@ -84,13 +86,17 @@ def _duration_by_year(_root: str, circuit: str) -> pd.DataFrame:
         GROUP BY annee
         ORDER BY annee
         """
-    ).df()
+        )
+        .df()
+    )
 
 
 @st.cache_data(show_spinner=False)
 def _atp_wta_comparison(_root: str) -> pd.DataFrame:
-    return _connection().execute(
-        """
+    return (
+        _connection()
+        .execute(
+            """
         SELECT
             circuit,
             CAST(tourney_date / 10000 AS INT) AS annee,
@@ -103,14 +109,18 @@ def _atp_wta_comparison(_root: str) -> pd.DataFrame:
         GROUP BY circuit, annee
         ORDER BY annee, circuit
         """
-    ).df()
+        )
+        .df()
+    )
 
 
 @st.cache_data(show_spinner=False)
 def _duration_distribution(_root: str, circuit: str) -> pd.DataFrame:
     cf = circuit_filter_sql(circuit)
-    return _connection().execute(
-        f"""
+    return (
+        _connection()
+        .execute(
+            f"""
         SELECT
             COALESCE(NULLIF(surface, ''), 'Inconnue') AS surface,
             minutes
@@ -119,11 +129,13 @@ def _duration_distribution(_root: str, circuit: str) -> pd.DataFrame:
           AND minutes < 400
           {cf}
         """
-    ).df()
+        )
+        .df()
+    )
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
-circuit = st.sidebar.selectbox("Circuit", ["Tous", "ATP", "WTA"], key="ins_circuit")
+circuit = circuit_selectbox(key="ins_circuit")
 
 st.title("Insights")
 page_info(
@@ -140,22 +152,26 @@ aces_df = _aces_df_by_year(str(_ROOT), circuit)
 
 if not aces_df.empty:
     fig_aces = go.Figure()
-    fig_aces.add_trace(go.Scatter(
-        x=aces_df["annee"],
-        y=aces_df["aces_par_match"],
-        mode="lines+markers",
-        name="Aces / match",
-        line=dict(color=TENNIS_HARD, width=2),
-        marker=dict(size=5),
-    ))
-    fig_aces.add_trace(go.Scatter(
-        x=aces_df["annee"],
-        y=aces_df["df_par_match"],
-        mode="lines+markers",
-        name="Double-fautes / match",
-        line=dict(color=TENNIS_CLAY, width=2, dash="dash"),
-        marker=dict(size=5),
-    ))
+    fig_aces.add_trace(
+        go.Scatter(
+            x=aces_df["annee"],
+            y=aces_df["aces_par_match"],
+            mode="lines+markers",
+            name="Aces / match",
+            line=dict(color=TENNIS_HARD, width=2),
+            marker=dict(size=5),
+        )
+    )
+    fig_aces.add_trace(
+        go.Scatter(
+            x=aces_df["annee"],
+            y=aces_df["df_par_match"],
+            mode="lines+markers",
+            name="Double-fautes / match",
+            line=dict(color=TENNIS_CLAY, width=2, dash="dash"),
+            marker=dict(size=5),
+        )
+    )
     fig_aces.update_layout(
         title="Évolution des aces et double-fautes",
         xaxis_title="Année",
@@ -176,22 +192,26 @@ dur_df = _duration_by_year(str(_ROOT), circuit)
 
 if not dur_df.empty and dur_df["duree_moy"].notna().any():
     fig_dur = go.Figure()
-    fig_dur.add_trace(go.Scatter(
-        x=dur_df["annee"],
-        y=dur_df["duree_moy"],
-        mode="lines+markers",
-        name="Durée moyenne (min)",
-        line=dict(color=TENNIS_LINE, width=2),
-        marker=dict(size=5),
-    ))
-    fig_dur.add_trace(go.Scatter(
-        x=dur_df["annee"],
-        y=dur_df["duree_mediane"],
-        mode="lines+markers",
-        name="Durée médiane (min)",
-        line=dict(color=TENNIS_GREEN, width=2, dash="dot"),
-        marker=dict(size=5),
-    ))
+    fig_dur.add_trace(
+        go.Scatter(
+            x=dur_df["annee"],
+            y=dur_df["duree_moy"],
+            mode="lines+markers",
+            name="Durée moyenne (min)",
+            line=dict(color=TENNIS_LINE, width=2),
+            marker=dict(size=5),
+        )
+    )
+    fig_dur.add_trace(
+        go.Scatter(
+            x=dur_df["annee"],
+            y=dur_df["duree_mediane"],
+            mode="lines+markers",
+            name="Durée médiane (min)",
+            line=dict(color=TENNIS_GREEN, width=2, dash="dot"),
+            marker=dict(size=5),
+        )
+    )
     fig_dur.update_layout(
         title="Durée des matchs dans le temps",
         xaxis_title="Année",
@@ -268,13 +288,15 @@ if not dist_df.empty:
     for surf in dist_df["surface"].unique():
         subset = dist_df[dist_df["surface"] == surf]["minutes"]
         color = SURF_COLORS.get(surf, TENNIS_LINE)
-        fig_box.add_trace(go.Box(
-            y=subset,
-            name=surf,
-            marker_color=color,
-            boxmean="sd",
-            hovertemplate="<b>%{x}</b><br>%{y} min<extra></extra>",
-        ))
+        fig_box.add_trace(
+            go.Box(
+                y=subset,
+                name=surf,
+                marker_color=color,
+                boxmean="sd",
+                hovertemplate="<b>%{x}</b><br>%{y} min<extra></extra>",
+            )
+        )
     fig_box.update_layout(
         title="Distribution de la durée des matchs par surface",
         xaxis_title="Surface",
@@ -285,3 +307,121 @@ if not dist_df.empty:
     st.plotly_chart(fig_box, use_container_width=True)
 else:
     st.info("Données de durée par surface indisponibles.")
+
+
+# ── Section E — Records de séries de victoires consécutives ──────────────────
+st.divider()
+st.subheader("Records — plus longues séries de victoires consécutives")
+page_info(
+    "Algorithme classique de *gaps and islands* SQL : pour chaque joueur, on identifie "
+    "les sous-séquences de victoires consécutives et on extrait les plus longues. "
+    "Inclut tous les matchs ATP/WTA officiels depuis 2010."
+)
+
+
+@st.cache_data(show_spinner=False)
+def _longest_win_streaks(_root: str, circuit: str, top_n: int = 15) -> pd.DataFrame:
+    """Calcule les plus longues séries de victoires consécutives par joueur.
+
+    Pattern gaps-and-islands :
+    - Pour chaque match d'un joueur, on attribue 1 si victoire, 0 sinon.
+    - On regroupe les matchs consécutifs avec même statut via
+      `row_number - sum(wins)` qui reste constant durant une série de victoires.
+    """
+    cf = circuit_filter_sql(circuit)
+    sql = f"""
+        WITH player_matches AS (
+            -- Tous les matchs de tous les joueurs (winner + loser unionés)
+            SELECT winner_id AS player_id, tourney_date,
+                   1 AS is_win,
+                   winner_name AS full_name
+            FROM v_matches WHERE 1=1 {cf}
+            UNION ALL
+            SELECT loser_id  AS player_id, tourney_date,
+                   0 AS is_win,
+                   loser_name AS full_name
+            FROM v_matches WHERE 1=1 {cf}
+        ),
+        ordered AS (
+            SELECT player_id, full_name, tourney_date, is_win,
+                   ROW_NUMBER() OVER (PARTITION BY player_id ORDER BY tourney_date) AS rn,
+                   SUM(is_win) OVER (
+                        PARTITION BY player_id ORDER BY tourney_date
+                        ROWS UNBOUNDED PRECEDING
+                   ) AS cum_wins
+            FROM player_matches
+        ),
+        streaks AS (
+            -- L'« île » de victoires consécutives : rn - cum_wins reste constant
+            SELECT player_id, full_name, is_win,
+                   (rn - cum_wins) AS grp,
+                   tourney_date
+            FROM ordered
+            WHERE is_win = 1
+        ),
+        agg AS (
+            SELECT player_id,
+                   ANY_VALUE(full_name) AS full_name,
+                   grp,
+                   COUNT(*) AS streak_len,
+                   MIN(tourney_date) AS start_date,
+                   MAX(tourney_date) AS end_date
+            FROM streaks
+            GROUP BY player_id, grp
+        )
+        SELECT player_id, full_name, streak_len, start_date, end_date
+        FROM agg
+        WHERE TRIM(full_name) <> ''
+        ORDER BY streak_len DESC
+        LIMIT ?
+    """
+    try:
+        return _connection().execute(sql, [top_n]).df()
+    except duckdb.Error:
+        return pd.DataFrame()
+
+
+streaks_df = _longest_win_streaks(str(_ROOT), circuit, top_n=15)
+
+if not streaks_df.empty:
+    streaks_display = streaks_df.copy()
+    streaks_display["Période"] = (
+        streaks_display["start_date"].map(
+            lambda d: pd.to_datetime(str(int(d)), format="%Y%m%d").strftime("%d/%m/%Y")
+        )
+        + " → "
+        + streaks_display["end_date"].map(
+            lambda d: pd.to_datetime(str(int(d)), format="%Y%m%d").strftime("%d/%m/%Y")
+        )
+    )
+    streaks_display = streaks_display[["full_name", "streak_len", "Période"]].rename(
+        columns={"full_name": "Joueur", "streak_len": "Série"}
+    )
+    streaks_display.insert(0, "Rang", range(1, len(streaks_display) + 1))
+
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        st.dataframe(streaks_display, use_container_width=True, hide_index=True)
+    with col2:
+        fig_streaks = go.Figure(
+            go.Bar(
+                x=streaks_df.head(10)["streak_len"][::-1],
+                y=streaks_df.head(10)["full_name"][::-1],
+                orientation="h",
+                marker_color=TENNIS_GREEN,
+                text=streaks_df.head(10)["streak_len"][::-1],
+                textposition="outside",
+                hovertemplate="<b>%{y}</b><br>%{x} victoires consécutives<extra></extra>",
+            )
+        )
+        fig_streaks.update_layout(
+            title="Top 10 plus longues séries",
+            xaxis_title="Nombre de victoires consécutives",
+            yaxis_title=None,
+            height=420,
+            margin=dict(l=10, r=40),
+        )
+        apply_tennis_theme(fig_streaks)
+        st.plotly_chart(fig_streaks, use_container_width=True)
+else:
+    st.info("Données de séries indisponibles.")

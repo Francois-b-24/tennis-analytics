@@ -2,22 +2,13 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
-_APP_DIR = Path(__file__).resolve().parents[1]
-_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from components._bootstrap import init_app
 
-from dotenv import load_dotenv
-
-load_dotenv(_ROOT / ".env")
-os.environ.setdefault("ROOT_PATH", str(_ROOT))
-
-_SRC = _ROOT / "src"
-for path in (_APP_DIR, _ROOT, _SRC):
-    if str(path) not in sys.path:
-        sys.path.insert(0, str(path))
+_ROOT, _ = init_app(__file__)
 
 import math
 
@@ -29,6 +20,7 @@ import streamlit as st
 
 from components.plotly_theme import apply_tennis_theme
 from components.widgets import (
+    circuit_selectbox,
     format_date_dd_mm_yyyy,
     inject_global_css,
     load_player_options,
@@ -256,7 +248,7 @@ st.set_page_config(page_title="Face à Face — Tennis Analytics", layout="wide"
 inject_global_css()
 st.title("Face à Face (H2H)")
 
-circuit = st.sidebar.selectbox("Circuit", ["ATP", "WTA", "Tous"], key="h2h_circuit")
+circuit = circuit_selectbox(key="h2h_circuit", default="ATP")
 
 connection = _connection()
 players = _player_options_circuit(str(_ROOT), circuit)
@@ -293,6 +285,7 @@ st.markdown(_favorite_message(player_a, player_b, name_a, name_b, surface_filter
 
 summary = _h2h_summary(str(_ROOT), player_a, player_b)
 if not summary.empty:
+
     def _safe_int(v: object) -> int:
         try:
             f = float(v)
@@ -324,6 +317,70 @@ if not surface_df.empty:
         }
     )
     st.dataframe(display, use_container_width=True, hide_index=True)
+
+    # ── Heatmap divergente : domination relative par surface ─────────────────
+    # On ne garde que les 3 surfaces principales et on calcule le % de victoires
+    # de A. Couleur divergente : >50 % rouge (A domine), <50 % bleu (B domine).
+    main_surfaces = surface_df[surface_df["surface_label"].isin(["Hard", "Clay", "Grass"])].copy()
+    if not main_surfaces.empty and main_surfaces["total"].sum() > 0:
+        main_surfaces["pct_a"] = (
+            main_surfaces["wins_a"] / main_surfaces["total"].replace(0, np.nan) * 100
+        )
+        main_surfaces = main_surfaces.set_index("surface_label").reindex(["Hard", "Clay", "Grass"])
+
+        labels_x = ["Dur", "Terre battue", "Gazon"]
+        z = [[main_surfaces["pct_a"].iloc[i] for i in range(3)]]
+        text = [
+            [
+                (
+                    (
+                        f"{main_surfaces['wins_a'].iloc[i]:.0f}-"
+                        f"{main_surfaces['wins_b'].iloc[i]:.0f}<br>"
+                        f"({main_surfaces['pct_a'].iloc[i]:.0f} %)"
+                    )
+                    if pd.notna(main_surfaces["pct_a"].iloc[i])
+                    else "—"
+                )
+                for i in range(3)
+            ]
+        ]
+
+        fig_heat = go.Figure(
+            go.Heatmap(
+                z=z,
+                x=labels_x,
+                y=[f"Domination {name_a}"],
+                text=text,
+                texttemplate="%{text}",
+                textfont=dict(size=14, color="#1a1a1a"),
+                colorscale=[
+                    [0.0, "#2E5C8A"],  # bleu : B domine
+                    [0.5, "#f4f4f4"],  # équilibre
+                    [1.0, "#B23A48"],  # rouge : A domine
+                ],
+                zmid=50,
+                zmin=0,
+                zmax=100,
+                showscale=True,
+                colorbar=dict(
+                    title=f"% victoires<br>{name_a}",
+                    tickvals=[0, 25, 50, 75, 100],
+                    ticktext=["0 %", "25 %", "50 %", "75 %", "100 %"],
+                ),
+                hovertemplate="<b>%{x}</b><br>%{text}<extra></extra>",
+            )
+        )
+        fig_heat.update_layout(
+            title="Domination relative par surface",
+            height=180,
+            margin=dict(l=140, r=20, t=50, b=20),
+        )
+        apply_tennis_theme(fig_heat)
+        st.plotly_chart(fig_heat, use_container_width=True)
+        st.caption(
+            "🔴 = surface où le premier joueur domine · 🔵 = surface où le second domine. "
+            "La cellule affiche le bilan brut et le % de victoires."
+        )
 
 matches_df = _h2h_matches(str(_ROOT), player_a, player_b)
 st.subheader("Historique des matchs")

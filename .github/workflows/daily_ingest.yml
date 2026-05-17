@@ -1,64 +1,93 @@
 name: Ingestion quotidienne
 
 on:
-  # Désactivé : le pipeline d'ingestion s'exécute en local via `tennis-ingest`.
-  # Ré-activer en décommentant ci-dessous + en ajustant requirements pour pandera.
-  # schedule:
-  #   - cron: "0 4 * * *"
+  schedule:
+    # Tous les jours à 04:00 UTC (06:00 Paris été, 05:00 hiver).
+    # Les CSV Sackmann sont mis à jour en fin de journée US — 04:00 UTC = nuit calme.
+    - cron: "0 4 * * *"
   workflow_dispatch: {}
 
 permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: daily-ingest
+  cancel-in-progress: false
+
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Installer uv
-        uses: astral-sh/setup-uv@v4
+      - name: Configurer Python 3.11
+        uses: actions/setup-python@v5
         with:
-          version: "0.5.5"
+          python-version: "3.11"
+          cache: "pip"
 
-      - name: Configurer Python
-        run: uv python install 3.12
+      - name: Installer les dépendances (runtime + dev)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e ".[dev]"
 
-      - name: Cache uv
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/uv
-          key: uv-ingest-${{ hashFiles('pyproject.toml') }}
+      - name: Vérifier l'environnement
+        run: |
+          python -c "from ingestion.sackmann_loader import run_ingestion_pipeline; print('OK')"
 
-      - name: Installer le projet
-        run: uv sync --all-extras --python 3.12
-
-      - name: Lancer l'ingestion et les transformations
+      - name: Télécharger, valider et matérialiser
         env:
           ROOT_PATH: ${{ github.workspace }}
-        run: uv run tennis-ingest
+        run: tennis-ingest
 
-      - name: Recalculer les Elo et le modèle (artefacts)
+      - name: Recalculer les Elo et le modèle
         env:
           ROOT_PATH: ${{ github.workspace }}
         run: |
-          uv run python -m transformation.build_elo
-          uv run python -m transformation.build_model
+          python -m transformation.build_elo
+          python -m transformation.build_model
+
+      - name: Vérifier la taille des parquets
+        env:
+          MAX_PARQUET_BYTES: ${{ vars.MAX_PARQUET_BYTES }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          limit = int(os.environ.get("MAX_PARQUET_BYTES") or "100000000")
+          failures = []
+          for p in Path("data/processed").glob("*.parquet"):
+              sz = p.stat().st_size
+              if sz > limit:
+                  failures.append(f"{p}: {sz} > {limit}")
+          if failures:
+              print("\n".join(failures))
+              raise SystemExit(1)
+          print("Tailles OK")
+          PY
 
       - name: Créer une pull request
         uses: peter-evans/create-pull-request@v7
         with:
-          commit-message: "data: mise à jour des parquets"
+          commit-message: "data: mise à jour automatique des parquets"
           title: "data: mise à jour quotidienne des parquets"
           body: |
             Mise à jour automatique des jeux de données traités.
 
             - Déclenché par : `${{ github.workflow }}`
-            - Révision : `${{ github.sha }}`
+            - Révision base : `${{ github.sha }}`
+            - Date : `${{ github.event.head_commit.timestamp }}`
 
-            Merci de vérifier les différences de volume et de lancer les tests localement si besoin.
+            **Checklist reviewer :**
+            - [ ] Volume des parquets cohérent (pas de chute brutale)
+            - [ ] CI verte sur la branche `data/update-*`
+            - [ ] Tests passent localement si modifs ML
           branch: data/update-${{ github.run_id }}
           delete-branch: true
+          add-paths: |
+            data/processed/*.parquet
+            data/processed/models/*.joblib

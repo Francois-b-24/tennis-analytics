@@ -2,22 +2,13 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
-_APP_DIR = Path(__file__).resolve().parents[1]
-_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from components._bootstrap import init_app
 
-from dotenv import load_dotenv
-
-load_dotenv(_ROOT / ".env")
-os.environ.setdefault("ROOT_PATH", str(_ROOT))
-
-_SRC = _ROOT / "src"
-for path in (_APP_DIR, _ROOT, _SRC):
-    if str(path) not in sys.path:
-        sys.path.insert(0, str(path))
+_ROOT, _ = init_app(__file__)
 
 import duckdb
 import pandas as pd
@@ -31,7 +22,7 @@ from components.plotly_theme import (
     TENNIS_LINE,
     apply_tennis_theme,
 )
-from components.widgets import format_elo, inject_global_css, page_info
+from components.widgets import circuit_selectbox, format_elo, inject_global_css, page_info
 from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Classements Elo — Tennis Analytics", layout="wide")
@@ -88,7 +79,7 @@ def _top_elo(_root: str, circuit: str, surface_col: str, top_n: int) -> pd.DataF
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
-circuit = st.sidebar.selectbox("Circuit", ["ATP", "WTA"], key="elo_circuit")
+circuit = circuit_selectbox(key="elo_circuit", include_all=False, default="ATP")
 top_n = st.sidebar.slider("Top N joueurs", min_value=10, max_value=100, value=50, step=10)
 surface_choice = st.sidebar.selectbox(
     "Surface de classement", list(SURFACE_MAP.keys()), key="elo_surface"
@@ -144,8 +135,7 @@ df = _top_elo(str(_ROOT), circuit, surface_col, top_n)
 
 if df.empty:
     st.warning(
-        "Aucune donnée Elo disponible. "
-        "Lancez `uv run python -m transformation.build_elo`."
+        "Aucune donnée Elo disponible. " "Lancez `uv run python -m transformation.build_elo`."
     )
     st.stop()
 
@@ -157,15 +147,17 @@ for col in ["elo_global", "elo_hard", "elo_clay", "elo_grass"]:
     display_df[col] = display_df[col].apply(lambda v: format_elo(v) if pd.notna(v) else "—")
 
 st.dataframe(
-    display_df.rename(columns={
-        "rang": "Rang",
-        "joueur": "Joueur",
-        "elo_global": "Global",
-        "elo_hard": "Dur",
-        "elo_clay": "Terre",
-        "elo_grass": "Gazon",
-        "last_match_date": "Dernier match",
-    }),
+    display_df.rename(
+        columns={
+            "rang": "Rang",
+            "joueur": "Joueur",
+            "elo_global": "Global",
+            "elo_hard": "Dur",
+            "elo_clay": "Terre",
+            "elo_grass": "Gazon",
+            "last_match_date": "Dernier match",
+        }
+    ),
     use_container_width=True,
     hide_index=True,
 )
@@ -177,15 +169,17 @@ st.subheader(f"Visualisation Top {min(top_n, 30)}")
 
 chart_df = df.head(30).sort_values(surface_col, ascending=True)
 
-fig_bar = go.Figure(go.Bar(
-    x=chart_df[surface_col],
-    y=chart_df["joueur"],
-    orientation="h",
-    marker_color=surface_color,
-    text=chart_df[surface_col].apply(lambda v: format_elo(v) if pd.notna(v) else "—"),
-    textposition="outside",
-    hovertemplate="<b>%{y}</b><br>Elo %{x:.0f}<extra></extra>",
-))
+fig_bar = go.Figure(
+    go.Bar(
+        x=chart_df[surface_col],
+        y=chart_df["joueur"],
+        orientation="h",
+        marker_color=surface_color,
+        text=chart_df[surface_col].apply(lambda v: format_elo(v) if pd.notna(v) else "—"),
+        textposition="outside",
+        hovertemplate="<b>%{y}</b><br>Elo %{x:.0f}<extra></extra>",
+    )
+)
 fig_bar.update_layout(
     title=f"Top {min(top_n, 30)} {circuit} — Elo {surface_choice}",
     xaxis_title=f"Rating Elo ({surface_choice})",
@@ -212,20 +206,22 @@ player_row = df[df["joueur"] == player_choice].iloc[0]
 surfaces = ["Global", "Dur", "Terre battue", "Gazon"]
 values = [
     float(player_row["elo_global"]) if pd.notna(player_row["elo_global"]) else None,
-    float(player_row["elo_hard"])   if pd.notna(player_row["elo_hard"])   else None,
-    float(player_row["elo_clay"])   if pd.notna(player_row["elo_clay"])   else None,
-    float(player_row["elo_grass"])  if pd.notna(player_row["elo_grass"])  else None,
+    float(player_row["elo_hard"]) if pd.notna(player_row["elo_hard"]) else None,
+    float(player_row["elo_clay"]) if pd.notna(player_row["elo_clay"]) else None,
+    float(player_row["elo_grass"]) if pd.notna(player_row["elo_grass"]) else None,
 ]
 colors = [TENNIS_LINE, TENNIS_HARD, TENNIS_CLAY, TENNIS_GREEN]
 
-fig_comp = go.Figure(go.Bar(
-    x=surfaces,
-    y=values,
-    marker_color=colors,
-    text=[format_elo(v) for v in values],
-    textposition="outside",
-    hovertemplate="<b>%{x}</b><br>Elo : %{y:.0f}<extra></extra>",
-))
+fig_comp = go.Figure(
+    go.Bar(
+        x=surfaces,
+        y=values,
+        marker_color=colors,
+        text=[format_elo(v) for v in values],
+        textposition="outside",
+        hovertemplate="<b>%{x}</b><br>Elo : %{y:.0f}<extra></extra>",
+    )
+)
 fig_comp.update_layout(
     title=f"Profil Elo multi-surface — {player_choice}",
     xaxis_title="Surface",

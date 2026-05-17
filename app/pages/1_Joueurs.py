@@ -2,22 +2,14 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
-_APP_DIR = Path(__file__).resolve().parents[1]
-_ROOT = Path(__file__).resolve().parents[2]
+# Bootstrap commun : sys.path, .env, racine projet
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from components._bootstrap import init_app
 
-from dotenv import load_dotenv
-
-load_dotenv(_ROOT / ".env")
-os.environ.setdefault("ROOT_PATH", str(_ROOT))
-
-_SRC = _ROOT / "src"
-for path in (_APP_DIR, _ROOT, _SRC):
-    if str(path) not in sys.path:
-        sys.path.insert(0, str(path))
+_ROOT, _ = init_app(__file__)
 
 import math
 
@@ -34,6 +26,7 @@ from components.plotly_theme import (
     apply_tennis_theme,
 )
 from components.widgets import (
+    circuit_selectbox,
     disambiguate_player_labels,
     format_date_dd_mm_yyyy,
     format_elo,
@@ -78,8 +71,10 @@ def _player_options(_root: str, circuit: str) -> pd.DataFrame:
 
 @st.cache_data(show_spinner=False)
 def _identity(_root: str, player_id: int) -> pd.DataFrame:
-    return _connection().execute(
-        """
+    return (
+        _connection()
+        .execute(
+            """
         SELECT p.name_first, p.name_last, p.ioc AS pays, p.dob, p.circuit,
                e.elo_global, e.elo_hard, e.elo_clay, e.elo_grass, e.last_match_date
         FROM v_players p
@@ -87,14 +82,18 @@ def _identity(_root: str, player_id: int) -> pd.DataFrame:
         WHERE p.player_id = ?
         LIMIT 1;
         """,
-        [player_id],
-    ).df()
+            [player_id],
+        )
+        .df()
+    )
 
 
 @st.cache_data(show_spinner=False)
 def _career_stats(_root: str, player_id: int) -> pd.DataFrame:
-    return _connection().execute(
-        """
+    return (
+        _connection()
+        .execute(
+            """
         SELECT
             COUNT(*) AS total,
             SUM(CASE WHEN winner_id = ? THEN 1 ELSE 0 END) AS wins,
@@ -110,14 +109,18 @@ def _career_stats(_root: str, player_id: int) -> pd.DataFrame:
         FROM v_matches
         WHERE winner_id = ? OR loser_id = ?
         """,
-        [player_id] * 7,
-    ).df()
+            [player_id] * 7,
+        )
+        .df()
+    )
 
 
 @st.cache_data(show_spinner=False)
 def _surface_stats(_root: str, player_id: int) -> pd.DataFrame:
-    return _connection().execute(
-        """
+    return (
+        _connection()
+        .execute(
+            """
         SELECT
             COALESCE(NULLIF(surface, ''), 'Inconnue') AS surface,
             COUNT(*) AS total,
@@ -128,22 +131,28 @@ def _surface_stats(_root: str, player_id: int) -> pd.DataFrame:
         GROUP BY surface
         ORDER BY total DESC
         """,
-        [player_id, player_id, player_id, player_id],
-    ).df()
+            [player_id, player_id, player_id, player_id],
+        )
+        .df()
+    )
 
 
 @st.cache_data(show_spinner=False)
 def _elo_history(_root: str, player_id: int) -> pd.DataFrame:
     try:
-        df = _connection().execute(
-            """
+        df = (
+            _connection()
+            .execute(
+                """
             SELECT tourney_date, elo_global, elo_hard, elo_clay, elo_grass
             FROM v_elo_history
             WHERE player_id = ?
             ORDER BY tourney_date ASC
             """,
-            [player_id],
-        ).df()
+                [player_id],
+            )
+            .df()
+        )
         if not df.empty:
             df["date"] = pd.to_datetime(df["tourney_date"].astype(str), format="%Y%m%d")
         return df
@@ -153,8 +162,10 @@ def _elo_history(_root: str, player_id: int) -> pd.DataFrame:
 
 @st.cache_data(show_spinner=False)
 def _recent_matches(_root: str, player_id: int) -> pd.DataFrame:
-    return _connection().execute(
-        """
+    return (
+        _connection()
+        .execute(
+            """
         SELECT
             tourney_date,
             tourney_name,
@@ -169,12 +180,14 @@ def _recent_matches(_root: str, player_id: int) -> pd.DataFrame:
         ORDER BY tourney_date DESC
         LIMIT 20
         """,
-        [player_id, player_id, player_id, player_id],
-    ).df()
+            [player_id, player_id, player_id, player_id],
+        )
+        .df()
+    )
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
-circuit = st.sidebar.selectbox("Circuit", ["ATP", "WTA"], key="joueurs_circuit")
+circuit = circuit_selectbox(key="joueurs_circuit", include_all=False, default="ATP")
 
 # ── Titre ─────────────────────────────────────────────────────────────────────
 st.title("Joueurs")
@@ -191,9 +204,7 @@ if players.empty:
 
 players = disambiguate_player_labels(players)
 mapping = dict(zip(players["label"], players["player_id"], strict=False))
-selected_label = st.selectbox(
-    "Sélectionner un joueur", list(mapping.keys()), key="joueurs_player"
-)
+selected_label = st.selectbox("Sélectionner un joueur", list(mapping.keys()), key="joueurs_player")
 player_id = int(mapping[selected_label])
 # Conserve le nom propre (sans IOC) pour les titres et affichages
 selected_name = players.loc[players["player_id"] == player_id, "full_name"].iloc[0]
@@ -211,10 +222,16 @@ col_bio, col_elo = st.columns([2, 1])
 
 with col_bio:
     dob_raw = row.get("dob")
-    dob_str = format_date_dd_mm_yyyy(int(dob_raw)) if dob_raw and str(dob_raw) not in ("nan", "None", "") else "—"
+    dob_str = (
+        format_date_dd_mm_yyyy(int(dob_raw))
+        if dob_raw and str(dob_raw) not in ("nan", "None", "")
+        else "—"
+    )
     country = row.get("pays") or "—"
     st.markdown(f"## {selected_name}")
-    st.markdown(f"**Nationalité :** {country} &nbsp;|&nbsp; **Naissance :** {dob_str} &nbsp;|&nbsp; **Circuit :** {circuit}")
+    st.markdown(
+        f"**Nationalité :** {country} &nbsp;|&nbsp; **Naissance :** {dob_str} &nbsp;|&nbsp; **Circuit :** {circuit}"
+    )
 
 with col_elo:
     st.markdown("#### Ratings Elo actuels")
@@ -273,18 +290,22 @@ if not surface_df.empty:
     SURF_COLORS = {"Hard": TENNIS_HARD, "Clay": TENNIS_CLAY, "Grass": TENNIS_GREEN}
 
     fig_surf = go.Figure()
-    fig_surf.add_trace(go.Bar(
-        name="Victoires",
-        x=surface_df["surface"],
-        y=surface_df["wins"],
-        marker_color=TENNIS_GREEN,
-    ))
-    fig_surf.add_trace(go.Bar(
-        name="Défaites",
-        x=surface_df["surface"],
-        y=surface_df["losses"],
-        marker_color=TENNIS_CLAY,
-    ))
+    fig_surf.add_trace(
+        go.Bar(
+            name="Victoires",
+            x=surface_df["surface"],
+            y=surface_df["wins"],
+            marker_color=TENNIS_GREEN,
+        )
+    )
+    fig_surf.add_trace(
+        go.Bar(
+            name="Défaites",
+            x=surface_df["surface"],
+            y=surface_df["losses"],
+            marker_color=TENNIS_CLAY,
+        )
+    )
     fig_surf.update_layout(barmode="group", title="Victoires et défaites par surface")
     apply_tennis_theme(fig_surf)
     st.plotly_chart(fig_surf, use_container_width=True)
@@ -306,14 +327,16 @@ if not elo_hist.empty and "date" in elo_hist.columns:
     ]
     for col, label, color, visible in traces:
         if col in elo_hist.columns:
-            fig_elo.add_trace(go.Scatter(
-                x=elo_hist["date"],
-                y=elo_hist[col],
-                mode="lines",
-                name=label,
-                line=dict(color=color, width=2),
-                visible=visible,
-            ))
+            fig_elo.add_trace(
+                go.Scatter(
+                    x=elo_hist["date"],
+                    y=elo_hist[col],
+                    mode="lines",
+                    name=label,
+                    line=dict(color=color, width=2),
+                    visible=visible,
+                )
+            )
     fig_elo.update_layout(
         title=f"Évolution Elo — {selected_name}",
         xaxis_title="Date",
@@ -337,17 +360,21 @@ if recent.empty:
 else:
     display = recent.copy()
     display["Date"] = display["tourney_date"].map(format_date_dd_mm_yyyy)
-    display = display.rename(columns={
-        "tourney_name": "Tournoi",
-        "surface": "Surface",
-        "round": "Tour",
-        "résultat": "Résultat",
-        "adversaire": "Adversaire",
-        "score": "Score",
-        "minutes": "Durée (min)",
-    })
+    display = display.rename(
+        columns={
+            "tourney_name": "Tournoi",
+            "surface": "Surface",
+            "round": "Tour",
+            "résultat": "Résultat",
+            "adversaire": "Adversaire",
+            "score": "Score",
+            "minutes": "Durée (min)",
+        }
+    )
     st.dataframe(
-        display[["Date", "Tournoi", "Surface", "Tour", "Résultat", "Adversaire", "Score", "Durée (min)"]],
+        display[
+            ["Date", "Tournoi", "Surface", "Tour", "Résultat", "Adversaire", "Score", "Durée (min)"]
+        ],
         use_container_width=True,
         hide_index=True,
     )

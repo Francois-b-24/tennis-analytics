@@ -2,22 +2,13 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
-_APP_DIR = Path(__file__).resolve().parents[1]
-_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from components._bootstrap import init_app
 
-from dotenv import load_dotenv
-
-load_dotenv(_ROOT / ".env")
-os.environ.setdefault("ROOT_PATH", str(_ROOT))
-
-_SRC = _ROOT / "src"
-for path in (_APP_DIR, _ROOT, _SRC):
-    if str(path) not in sys.path:
-        sys.path.insert(0, str(path))
+_ROOT, _ = init_app(__file__)
 
 import duckdb
 import pandas as pd
@@ -92,8 +83,10 @@ def _top20_per_circuit(_root: str, circuit: str) -> pd.DataFrame:
 @st.cache_data(show_spinner=False)
 def _player_career_stats(_root: str, player_id: int) -> pd.DataFrame:
     """Stats de carrière agrégées d'un joueur."""
-    return _connection().execute(
-        """
+    return (
+        _connection()
+        .execute(
+            """
         SELECT
             COUNT(*) AS total,
             SUM(CASE WHEN winner_id = ? THEN 1 ELSE 0 END) AS wins,
@@ -109,23 +102,29 @@ def _player_career_stats(_root: str, player_id: int) -> pd.DataFrame:
         FROM v_matches
         WHERE winner_id = ? OR loser_id = ?
         """,
-        [player_id] * 7,
-    ).df()
+            [player_id] * 7,
+        )
+        .df()
+    )
 
 
 @st.cache_data(show_spinner=False)
 def _player_recent_form(_root: str, player_id: int) -> tuple[float, list[str]]:
     """Forme sur les 20 derniers matchs (% victoires + séquence V/D)."""
-    df = _connection().execute(
-        """
+    df = (
+        _connection()
+        .execute(
+            """
         SELECT winner_id
         FROM v_matches
         WHERE winner_id = ? OR loser_id = ?
         ORDER BY tourney_date DESC
         LIMIT 20
         """,
-        [player_id, player_id],
-    ).df()
+            [player_id, player_id],
+        )
+        .df()
+    )
     if df.empty:
         return 0.0, []
     seq = ["V" if w == player_id else "D" for w in df["winner_id"]]
@@ -136,8 +135,10 @@ def _player_recent_form(_root: str, player_id: int) -> tuple[float, list[str]]:
 @st.cache_data(show_spinner=False)
 def _player_surface_winrate(_root: str, player_id: int) -> pd.DataFrame:
     """Taux de victoire par surface."""
-    return _connection().execute(
-        """
+    return (
+        _connection()
+        .execute(
+            """
         SELECT
             COALESCE(NULLIF(surface, ''), 'Inconnue') AS surface,
             COUNT(*) AS total,
@@ -152,15 +153,19 @@ def _player_surface_winrate(_root: str, player_id: int) -> pd.DataFrame:
         HAVING COUNT(*) >= 5
         ORDER BY total DESC
         """,
-        [player_id, player_id, player_id, player_id],
-    ).df()
+            [player_id, player_id, player_id, player_id],
+        )
+        .df()
+    )
 
 
 @st.cache_data(show_spinner=False)
 def _atp_vs_wta_top20_stats(_root: str) -> pd.DataFrame:
     """Stats agrégées comparées entre Top 20 ATP et Top 20 WTA."""
-    return _connection().execute(
-        """
+    return (
+        _connection()
+        .execute(
+            """
         WITH top20 AS (
             SELECT player_id, p.circuit
             FROM v_elo_latest e
@@ -189,13 +194,13 @@ def _atp_vs_wta_top20_stats(_root: str) -> pd.DataFrame:
         GROUP BY t.circuit
         ORDER BY t.circuit
         """
-    ).df()
+        )
+        .df()
+    )
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
-circuit_filter = st.sidebar.selectbox(
-    "Circuit", ["Les deux", "ATP", "WTA"], key="top20_circuit"
-)
+circuit_filter = st.sidebar.selectbox("Circuit", ["Les deux", "ATP", "WTA"], key="top20_circuit")
 
 st.title("Top 20 actuel — Élite mondiale")
 page_info(
@@ -230,15 +235,17 @@ if circuit_filter == "Les deux":
 # Conversion IOC → emoji drapeau + code
 display_df["pays"] = display_df["pays"].apply(country_flag_with_code)
 
-display_df = display_df.rename(columns={
-    "rang": "Rang",
-    "joueur": "Joueur",
-    "pays": "Pays",
-    "elo_global": "Elo global",
-    "elo_dur": "Elo dur",
-    "elo_terre": "Elo terre",
-    "elo_gazon": "Elo gazon",
-})
+display_df = display_df.rename(
+    columns={
+        "rang": "Rang",
+        "joueur": "Joueur",
+        "pays": "Pays",
+        "elo_global": "Elo global",
+        "elo_dur": "Elo dur",
+        "elo_terre": "Elo terre",
+        "elo_gazon": "Elo gazon",
+    }
+)
 
 ordered = ["Circuit", "Rang", "Joueur", "Pays", "Elo global", "Elo dur", "Elo terre", "Elo gazon"]
 final_cols = [c for c in ordered if c in display_df.columns]
@@ -249,6 +256,7 @@ st.divider()
 
 # ── Section 2 : Focus joueur ─────────────────────────────────────────────────
 st.subheader("Zoom sur un joueur")
+
 
 # Construit un label unique : "Joueur (PAYS)" pour eviter toute collision
 def _build_label(row: pd.Series) -> str:
@@ -285,10 +293,19 @@ with m2:
 with m3:
     if not career.empty:
         import math as _m
+
         _wins_raw = career.iloc[0]["wins"]
         _win_pct_raw = career.iloc[0]["win_pct"]
-        _wins = 0 if _wins_raw is None or (isinstance(_wins_raw, float) and _m.isnan(_wins_raw)) else int(_wins_raw)
-        _wp = 0.0 if _win_pct_raw is None or (isinstance(_win_pct_raw, float) and _m.isnan(_win_pct_raw)) else float(_win_pct_raw)
+        _wins = (
+            0
+            if _wins_raw is None or (isinstance(_wins_raw, float) and _m.isnan(_wins_raw))
+            else int(_wins_raw)
+        )
+        _wp = (
+            0.0
+            if _win_pct_raw is None or (isinstance(_win_pct_raw, float) and _m.isnan(_win_pct_raw))
+            else float(_win_pct_raw)
+        )
         st.metric(
             "Bilan carrière",
             f"{_wins} V",
@@ -327,14 +344,16 @@ with col_a:
         float(row["elo_terre"] or 0),
         float(row["elo_gazon"] or 0),
     ]
-    fig_radar.add_trace(go.Scatterpolar(
-        r=values + [values[0]],
-        theta=surfaces + [surfaces[0]],
-        fill="toself",
-        line=dict(color=TENNIS_HARD, width=2),
-        fillcolor="rgba(31, 78, 121, 0.25)",
-        name=selected_name,
-    ))
+    fig_radar.add_trace(
+        go.Scatterpolar(
+            r=[*values, values[0]],
+            theta=[*surfaces, surfaces[0]],
+            fill="toself",
+            line=dict(color=TENNIS_HARD, width=2),
+            fillcolor="rgba(31, 78, 121, 0.25)",
+            name=selected_name,
+        )
+    )
     fig_radar.update_layout(
         polar=dict(
             radialaxis=dict(visible=True, range=[1500, max(values) + 50]),
@@ -352,15 +371,17 @@ with col_b:
     if not surf_winrate.empty:
         SURF_COLORS = {"Hard": TENNIS_HARD, "Clay": TENNIS_CLAY, "Grass": TENNIS_GREEN}
         colors = [SURF_COLORS.get(s, TENNIS_LINE) for s in surf_winrate["surface"]]
-        fig_surf = go.Figure(go.Bar(
-            x=surf_winrate["surface"],
-            y=surf_winrate["win_pct"],
-            marker_color=colors,
-            text=[f"{v:.0f}%" for v in surf_winrate["win_pct"]],
-            textposition="outside",
-            hovertemplate="<b>%{x}</b><br>%{y}% sur %{customdata} matchs<extra></extra>",
-            customdata=surf_winrate["total"],
-        ))
+        fig_surf = go.Figure(
+            go.Bar(
+                x=surf_winrate["surface"],
+                y=surf_winrate["win_pct"],
+                marker_color=colors,
+                text=[f"{v:.0f}%" for v in surf_winrate["win_pct"]],
+                textposition="outside",
+                hovertemplate="<b>%{x}</b><br>%{y}% sur %{customdata} matchs<extra></extra>",
+                customdata=surf_winrate["total"],
+            )
+        )
         fig_surf.update_layout(
             yaxis_title="% victoires",
             yaxis=dict(range=[0, 100]),
@@ -395,9 +416,7 @@ st.divider()
 
 # ── Section 3 : Comparaison ATP vs WTA ───────────────────────────────────────
 st.subheader("Comparaison structurelle ATP vs WTA")
-st.caption(
-    "Stats moyennes calculées sur tous les matchs joués par les Top 20 de chaque circuit."
-)
+st.caption("Stats moyennes calculées sur tous les matchs joués par les Top 20 de chaque circuit.")
 
 cmp = _atp_vs_wta_top20_stats(str(_ROOT))
 
@@ -405,7 +424,8 @@ if cmp.empty or len(cmp) < 2:
     st.info("Données insuffisantes pour la comparaison.")
 else:
     fig_cmp = make_subplots(
-        rows=2, cols=2,
+        rows=2,
+        cols=2,
         subplot_titles=(
             "Aces / match",
             "Double-fautes / match",

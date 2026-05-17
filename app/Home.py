@@ -2,26 +2,23 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
-import duckdb
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from components._bootstrap import init_app
+
+_ROOT, connection = init_app(__file__)
+
 import streamlit as st
-from dotenv import load_dotenv
 
-_ROOT = Path(__file__).resolve().parents[1]
-_APP_DIR = Path(__file__).resolve().parent
-load_dotenv(_ROOT / ".env")
-os.environ.setdefault("ROOT_PATH", str(_ROOT))
-
-_SRC = _ROOT / "src"
-for path in (_APP_DIR, _ROOT, _SRC):
-    if str(path) not in sys.path:
-        sys.path.insert(0, str(path))
-
-from components.widgets import circuit_filter_sql, format_date_dd_mm_yyyy, inject_global_css, safe_scalar
-from db.duckdb_session import create_connection
+from components.widgets import (
+    circuit_filter_sql,
+    circuit_selectbox,
+    format_date_dd_mm_yyyy,
+    inject_global_css,
+    safe_scalar,
+)
 
 st.set_page_config(
     page_title="Tennis Analytics",
@@ -30,14 +27,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 inject_global_css()
-
-
-@st.cache_resource(show_spinner=False)
-def _connection() -> duckdb.DuckDBPyConnection:
-    return create_connection(_ROOT)
-
-
-connection = _connection()
 
 # ── Diagnostic : vérifier que les vues sont bien chargées ────────────────────
 try:
@@ -58,7 +47,7 @@ except Exception as e:
     st.stop()
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
-circuit = st.sidebar.selectbox("Circuit", ["Tous", "ATP", "WTA"], key="home_circuit")
+circuit = circuit_selectbox(key="home_circuit")
 cf = circuit_filter_sql(circuit)
 
 # ── Hero ──────────────────────────────────────────────────────────────────────
@@ -281,21 +270,21 @@ PAGES = [
         "icon": "🌟",
         "desc": "Focus sur les 20 meilleurs joueurs ATP et WTA actuels : profil Elo, forme, style et comparaison structurelle.",
     },
+    {
+        "path": "pages/9_Profils_et_Styles.py",
+        "title": "Profils & Styles",
+        "icon": "🧬",
+        "desc": "Clustering automatique des styles de jeu (KMeans) et indice de polyvalence multi-surface.",
+    },
 ]
 
-row1 = st.columns(3)
-row2 = st.columns(3)
-row3 = st.columns(3)
+# Grille 3 colonnes x N lignes (ajustee dynamiquement a la longueur de PAGES)
+n_rows = (len(PAGES) + 2) // 3
+rows = [st.columns(3) for _ in range(n_rows)]
 
 for i, page in enumerate(PAGES):
-    if i < 3:
-        col = row1[i]
-    elif i < 6:
-        col = row2[i - 3]
-    else:
-        col = row3[i - 6]
-    with col:
-        with st.container(border=True):
-            st.markdown(f"### {page['icon']} {page['title']}")
-            st.caption(page["desc"])
-            st.page_link(page["path"], label=f"Ouvrir {page['title']} →")
+    col = rows[i // 3][i % 3]
+    with col, st.container(border=True):
+        st.markdown(f"### {page['icon']} {page['title']}")
+        st.caption(page["desc"])
+        st.page_link(page["path"], label=f"Ouvrir {page['title']} →")

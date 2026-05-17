@@ -43,6 +43,23 @@ def test_inactivity_decay_function() -> None:
     assert decayed < 1650.0
 
 
+def test_prepare_for_match_is_idempotent() -> None:
+    """Deux appels consécutifs de prepare_for_match pour la même date ne doivent
+    pas appliquer la décroissance d'inactivité deux fois (idempotence)."""
+    engine = EloEngine()
+    engine.process_match(1, 2, 20100101, "hard", 3)
+
+    # 400 jours plus tard, sans match entre temps
+    engine.prepare_for_match(1, 2, 20110206, "hard")
+    elo_after_first = engine.players[1].elo_global
+
+    # Second appel pour la même date : doit être un no-op
+    engine.prepare_for_match(1, 2, 20110206, "hard")
+    elo_after_second = engine.players[1].elo_global
+
+    assert elo_after_first == elo_after_second
+
+
 def test_compute_elo_outputs_shapes() -> None:
     matches = pd.DataFrame(
         {

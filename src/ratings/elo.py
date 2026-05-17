@@ -71,6 +71,10 @@ class PlayerState:
     elo_grass: float = BASE_ELO
     matches_played: int = 0
     last_match_date: datetime | None = None
+    # Date jusqu'à laquelle la décroissance d'inactivité a déjà été appliquée.
+    # Garantit l'idempotence : un second appel de prepare_for_match pour la même
+    # `today` (ou antérieure) ne ré-applique pas la décroissance.
+    last_decay_date: datetime | None = None
 
 
 @dataclass
@@ -111,7 +115,7 @@ class EloEngine:
         tourney_date: int,
         surface_norm: str | None,
     ) -> tuple[PlayerState, PlayerState, SurfaceKey]:
-        """Applique la décroissance d'inactivité puis retourne les états pré-résultat."""
+        """Applique la décroissance d'inactivité (idempotente) puis retourne les états pré-résultat."""
         today = _parse_date_int(tourney_date)
         surface = self._get_surface_key(surface_norm)
 
@@ -119,6 +123,11 @@ class EloEngine:
         l_state = self._ensure_player(loser_id)
 
         for state in (w_state, l_state):
+            # Idempotence : on ne ré-applique pas la décroissance si elle a
+            # déjà été calculée jusqu'à `today` (cas de prepare_for_match
+            # appelé deux fois pour le même match — itinéraire compute_*).
+            if state.last_decay_date is not None and state.last_decay_date >= today:
+                continue
             state.elo_global = _apply_inactivity_decay(
                 state.elo_global, state.last_match_date, today
             )
@@ -127,6 +136,7 @@ class EloEngine:
                 current = self._surface_rating(state, surf)
                 updated = _apply_inactivity_decay(current, state.last_match_date, today)
                 self._set_surface_rating(state, surf, updated)
+            state.last_decay_date = today
 
         return w_state, l_state, surface
 

@@ -2,23 +2,14 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
 
-_APP_DIR = Path(__file__).resolve().parents[1]
-_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from components._bootstrap import init_app
 
-from dotenv import load_dotenv
-
-load_dotenv(_ROOT / ".env")
-os.environ.setdefault("ROOT_PATH", str(_ROOT))
-
-_SRC = _ROOT / "src"
-for path in (_APP_DIR, _ROOT, _SRC):
-    if str(path) not in sys.path:
-        sys.path.insert(0, str(path))
+_ROOT, _ = init_app(__file__)
 
 import duckdb
 import numpy as np
@@ -29,11 +20,16 @@ import streamlit as st
 from components.plotly_theme import (
     TENNIS_CLAY,
     TENNIS_GREEN,
-    TENNIS_HARD,
-    TENNIS_LINE,
     apply_tennis_theme,
 )
-from components.widgets import inject_global_css, load_model_bundle, load_player_options, page_info, player_selectbox
+from components.widgets import (
+    circuit_selectbox,
+    inject_global_css,
+    load_model_bundle,
+    load_player_options,
+    page_info,
+    player_selectbox,
+)
 from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Prédictions — Tennis Analytics", layout="wide")
@@ -42,8 +38,8 @@ inject_global_css()
 MODEL_PATH = str(_ROOT / "data" / "processed" / "models" / "logreg_calibrated.joblib")
 
 SURFACE_ELO_COL = {"Dur": "elo_hard", "Terre battue": "elo_clay", "Gazon": "elo_grass"}
-SURFACE_NORM    = {"Dur": "hard",     "Terre battue": "clay",     "Gazon": "grass"}
-SURFACE_LABEL   = {"Dur": "🔵 Dur",   "Terre battue": "🟠 Terre battue", "Gazon": "🟢 Gazon"}
+SURFACE_NORM = {"Dur": "hard", "Terre battue": "clay", "Gazon": "grass"}
+SURFACE_LABEL = {"Dur": "🔵 Dur", "Terre battue": "🟠 Terre battue", "Gazon": "🟢 Gazon"}
 
 
 @st.cache_resource(show_spinner=False)
@@ -54,9 +50,11 @@ def _connection() -> duckdb.DuckDBPyConnection:
 @st.cache_data(show_spinner=False)
 def _elo_row(_root: str, player_id: int) -> pd.DataFrame:
     try:
-        return _connection().execute(
-            "SELECT * FROM v_elo_latest WHERE player_id = ? LIMIT 1;", [player_id]
-        ).df()
+        return (
+            _connection()
+            .execute("SELECT * FROM v_elo_latest WHERE player_id = ? LIMIT 1;", [player_id])
+            .df()
+        )
     except duckdb.Error:
         return pd.DataFrame()
 
@@ -64,9 +62,11 @@ def _elo_row(_root: str, player_id: int) -> pd.DataFrame:
 @st.cache_data(show_spinner=False)
 def _player_dob(_root: str, player_id: int) -> int | None:
     try:
-        row = _connection().execute(
-            "SELECT dob FROM v_players WHERE player_id = ? LIMIT 1;", [player_id]
-        ).fetchone()
+        row = (
+            _connection()
+            .execute("SELECT dob FROM v_players WHERE player_id = ? LIMIT 1;", [player_id])
+            .fetchone()
+        )
         if row and row[0]:
             token = str(row[0]).split(".")[0]
             if len(token) >= 4:
@@ -80,18 +80,22 @@ def _player_dob(_root: str, player_id: int) -> int | None:
 def _h2h_ratio(_root: str, player_a: int, player_b: int) -> tuple[float, int, int, int]:
     """Retourne (ratio_a, wins_a, wins_b, total)."""
     try:
-        row = _connection().execute(
-            """
+        row = (
+            _connection()
+            .execute(
+                """
             SELECT COUNT(*) AS total,
                    SUM(CASE WHEN winner_id = ? THEN 1 ELSE 0 END) AS wins_a
             FROM v_matches
             WHERE (winner_id = ? AND loser_id = ?)
                OR (winner_id = ? AND loser_id = ?)
             """,
-            [player_a, player_a, player_b, player_b, player_a],
-        ).fetchone()
+                [player_a, player_a, player_b, player_b, player_a],
+            )
+            .fetchone()
+        )
         if row and row[0] > 0:
-            total  = int(row[0])
+            total = int(row[0])
             wins_a = int(row[1])
             wins_b = total - wins_a
             return float(wins_a) / float(total), wins_a, wins_b, total
@@ -103,8 +107,10 @@ def _h2h_ratio(_root: str, player_a: int, player_b: int) -> tuple[float, int, in
 @st.cache_data(show_spinner=False)
 def _surface_winrate(_root: str, player_id: int, surface_norm: str) -> float:
     try:
-        row = _connection().execute(
-            """
+        row = (
+            _connection()
+            .execute(
+                """
             SELECT
                 SUM(CASE WHEN winner_id = ? THEN 1.0 ELSE 0.0 END) AS wins,
                 COUNT(*) AS total
@@ -112,8 +118,10 @@ def _surface_winrate(_root: str, player_id: int, surface_norm: str) -> float:
             WHERE surface_norm = ?
               AND (winner_id = ? OR loser_id = ?)
             """,
-            [player_id, surface_norm, player_id, player_id],
-        ).fetchone()
+                [player_id, surface_norm, player_id, player_id],
+            )
+            .fetchone()
+        )
         if row and row[1] > 0:
             return float(row[0]) / float(row[1])
     except duckdb.Error:
@@ -124,16 +132,20 @@ def _surface_winrate(_root: str, player_id: int, surface_norm: str) -> float:
 @st.cache_data(show_spinner=False)
 def _recent_form(_root: str, player_id: int) -> float:
     try:
-        df = _connection().execute(
-            """
+        df = (
+            _connection()
+            .execute(
+                """
             SELECT winner_id
             FROM v_matches
             WHERE winner_id = ? OR loser_id = ?
             ORDER BY tourney_date DESC
             LIMIT 10
             """,
-            [player_id, player_id],
-        ).df()
+                [player_id, player_id],
+            )
+            .df()
+        )
         if not df.empty:
             return float((df["winner_id"] == player_id).sum()) / len(df)
     except duckdb.Error:
@@ -149,7 +161,7 @@ def _get_elo(df: pd.DataFrame, col: str) -> float:
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
-circuit = st.sidebar.selectbox("Circuit", ["ATP", "WTA"], key="pred_circuit")
+circuit = circuit_selectbox(key="pred_circuit", include_all=False, default="ATP")
 
 st.title("Prédictions")
 page_info(
@@ -202,9 +214,7 @@ with col_a:
 with col_b:
     player_b = player_selectbox("Joueur B", players, key="pred_b")
 
-surface_choice = st.selectbox(
-    "Surface", list(SURFACE_ELO_COL.keys()), key="pred_surface"
-)
+surface_choice = st.selectbox("Surface", list(SURFACE_ELO_COL.keys()), key="pred_surface")
 
 if player_a is None or player_b is None or player_a == player_b:
     st.warning("Choisissez deux joueurs distincts.")
@@ -214,7 +224,7 @@ name_a = players.loc[players["player_id"] == player_a, "full_name"].iloc[0]
 name_b = players.loc[players["player_id"] == player_b, "full_name"].iloc[0]
 
 # ── Calcul automatique ────────────────────────────────────────────────────────
-elo_col   = SURFACE_ELO_COL[surface_choice]
+elo_col = SURFACE_ELO_COL[surface_choice]
 surf_norm = SURFACE_NORM[surface_choice]
 
 elo_a = _elo_row(str(_ROOT), player_a)
@@ -232,19 +242,19 @@ age_a = current_year - dob_a if dob_a else 27
 age_b = current_year - dob_b if dob_b else 27
 
 h2h_ratio, h2h_wins_a, h2h_wins_b, h2h_total = _h2h_ratio(str(_ROOT), player_a, player_b)
-wr_a   = _surface_winrate(str(_ROOT), player_a, surf_norm)
-wr_b   = _surface_winrate(str(_ROOT), player_b, surf_norm)
+wr_a = _surface_winrate(str(_ROOT), player_a, surf_norm)
+wr_b = _surface_winrate(str(_ROOT), player_b, surf_norm)
 form_a = _recent_form(str(_ROOT), player_a)
 form_b = _recent_form(str(_ROOT), player_b)
 
 features = {
-    "diff_elo_surface":    ea_surf - eb_surf,
-    "diff_elo_global":     ea_glob - eb_glob,
-    "diff_rank":           0.0,
-    "diff_age":            float(age_a - age_b),
-    "h2h_ratio":           h2h_ratio,
+    "diff_elo_surface": ea_surf - eb_surf,
+    "diff_elo_global": ea_glob - eb_glob,
+    "diff_rank": 0.0,
+    "diff_age": float(age_a - age_b),
+    "h2h_ratio": h2h_ratio,
     "surface_winrate_diff": wr_a - wr_b,
-    "recent_form_diff":    form_a - form_b,
+    "recent_form_diff": form_a - form_b,
 }
 
 feature_cols = bundle["features"]
@@ -263,21 +273,21 @@ with ca:
     st.markdown(f"#### {name_a}")
     m1, m2 = st.columns(2)
     with m1:
-        st.metric("Elo global",          f"{int(round(ea_glob))}")
+        st.metric("Elo global", f"{int(round(ea_glob))}")
         st.metric(f"Elo {surface_choice}", f"{int(round(ea_surf))}")
     with m2:
         st.metric("% victoires surface", f"{wr_a*100:.0f} %")
-        st.metric("Forme récente (10)",  f"{form_a*100:.0f} %")
+        st.metric("Forme récente (10)", f"{form_a*100:.0f} %")
 
 with cb:
     st.markdown(f"#### {name_b}")
     m1, m2 = st.columns(2)
     with m1:
-        st.metric("Elo global",          f"{int(round(eb_glob))}")
+        st.metric("Elo global", f"{int(round(eb_glob))}")
         st.metric(f"Elo {surface_choice}", f"{int(round(eb_surf))}")
     with m2:
         st.metric("% victoires surface", f"{wr_b*100:.0f} %")
-        st.metric("Forme récente (10)",  f"{form_b*100:.0f} %")
+        st.metric("Forme récente (10)", f"{form_b*100:.0f} %")
 
 # H2H summary
 if h2h_total > 0:
@@ -294,7 +304,7 @@ st.divider()
 # ── Probabilité de victoire ───────────────────────────────────────────────────
 st.subheader(f"Probabilité de victoire — {SURFACE_LABEL[surface_choice]}")
 
-winner   = name_a if prob_a >= prob_b else name_b
+winner = name_a if prob_a >= prob_b else name_b
 win_prob = max(prob_a, prob_b)
 
 # Bandeau favori
@@ -316,16 +326,18 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-fig = go.Figure(go.Bar(
-    x=[prob_a * 100, prob_b * 100],
-    y=[name_a, name_b],
-    orientation="h",
-    marker_color=[TENNIS_GREEN, TENNIS_CLAY],
-    text=[f"{prob_a*100:.1f} %", f"{prob_b*100:.1f} %"],
-    textposition="inside",
-    insidetextanchor="middle",
-    hovertemplate="%{y} : %{x:.1f} %<extra></extra>",
-))
+fig = go.Figure(
+    go.Bar(
+        x=[prob_a * 100, prob_b * 100],
+        y=[name_a, name_b],
+        orientation="h",
+        marker_color=[TENNIS_GREEN, TENNIS_CLAY],
+        text=[f"{prob_a*100:.1f} %", f"{prob_b*100:.1f} %"],
+        textposition="inside",
+        insidetextanchor="middle",
+        hovertemplate="%{y} : %{x:.1f} %<extra></extra>",
+    )
+)
 fig.update_layout(
     xaxis=dict(range=[0, 100], ticksuffix="%"),
     xaxis_title="Probabilité de victoire (%)",
@@ -340,13 +352,13 @@ st.plotly_chart(fig, use_container_width=True)
 # ── Détail des features ───────────────────────────────────────────────────────
 with st.expander("Détail des indicateurs utilisés par le modèle"):
     FEATURE_LABELS = {
-        "diff_elo_surface":    f"Écart Elo {surface_choice} (A − B)",
-        "diff_elo_global":     "Écart Elo global (A − B)",
-        "diff_rank":           "Écart classement (A − B)",
-        "diff_age":            "Écart d'âge en années (A − B)",
-        "h2h_ratio":           "Ratio H2H historique (victoires A / total)",
+        "diff_elo_surface": f"Écart Elo {surface_choice} (A − B)",
+        "diff_elo_global": "Écart Elo global (A − B)",
+        "diff_rank": "Écart classement (A − B)",
+        "diff_age": "Écart d'âge en années (A − B)",
+        "h2h_ratio": "Ratio H2H historique (victoires A / total)",
         "surface_winrate_diff": f"Écart % victoires sur {surface_choice} (A − B)",
-        "recent_form_diff":    "Écart forme récente — 10 derniers matchs (A − B)",
+        "recent_form_diff": "Écart forme récente — 10 derniers matchs (A − B)",
     }
     rows = [
         {"Indicateur": FEATURE_LABELS[k], "Valeur": f"{v:+.3f}" if k != "h2h_ratio" else f"{v:.3f}"}
@@ -359,3 +371,134 @@ st.caption(
     "depuis 2010. Les probabilités reflètent les performances historiques et les ratings Elo — "
     "elles ne constituent pas une recommandation de pari."
 )
+
+# ── Performance & transparence du modèle ─────────────────────────────────────
+diagnostics = bundle.get("diagnostics") if isinstance(bundle, dict) else None
+if diagnostics:
+    st.divider()
+    st.subheader("Performance et transparence du modèle")
+
+    metrics_d = diagnostics.get("metrics", {})
+    mcol1, mcol2, mcol3, mcol4 = st.columns(4)
+    with mcol1:
+        st.metric(
+            "Brier score",
+            f"{metrics_d.get('brier', 0):.3f}",
+            help="Erreur quadratique moyenne sur les probabilités (0 = parfait, 0.25 = aléatoire).",
+        )
+    with mcol2:
+        st.metric(
+            "Log loss",
+            f"{metrics_d.get('log_loss', 0):.3f}",
+            help="Pénalise fortement les prédictions très confiantes mais fausses.",
+        )
+    with mcol3:
+        st.metric(
+            "Exactitude",
+            f"{metrics_d.get('accuracy', 0) * 100:.1f} %",
+            help="% de matchs où le favori prédit a effectivement gagné.",
+        )
+    with mcol4:
+        st.metric("Matchs de test", f"{metrics_d.get('n_test', 0):,}".replace(",", " "))
+
+    cal = diagnostics.get("calibration") or {}
+    fi = diagnostics.get("feature_importance") or {}
+
+    pcol1, pcol2 = st.columns(2)
+
+    # Calibration plot — la diagonale = calibration parfaite
+    with pcol1:
+        st.markdown("**Courbe de calibration**")
+        if cal.get("prob_pred") and cal.get("prob_true"):
+            fig_cal = go.Figure()
+            fig_cal.add_trace(
+                go.Scatter(
+                    x=[0, 1],
+                    y=[0, 1],
+                    mode="lines",
+                    line=dict(color="#888", dash="dash"),
+                    name="Calibration parfaite",
+                    hoverinfo="skip",
+                )
+            )
+            fig_cal.add_trace(
+                go.Scatter(
+                    x=cal["prob_pred"],
+                    y=cal["prob_true"],
+                    mode="lines+markers",
+                    line=dict(color=TENNIS_GREEN, width=2.5),
+                    marker=dict(size=8),
+                    name="Modèle",
+                    hovertemplate=(
+                        "Prob. prédite : %{x:.2f}<br>" "Prob. observée : %{y:.2f}<extra></extra>"
+                    ),
+                )
+            )
+            fig_cal.update_layout(
+                xaxis_title="Probabilité prédite",
+                yaxis_title="Fréquence observée",
+                xaxis=dict(range=[0, 1], tickformat=".0%"),
+                yaxis=dict(range=[0, 1], tickformat=".0%"),
+                height=380,
+                showlegend=True,
+                legend=dict(orientation="h", y=-0.2),
+            )
+            apply_tennis_theme(fig_cal)
+            st.plotly_chart(fig_cal, use_container_width=True)
+            st.caption(
+                "Plus la courbe colle à la diagonale, plus les probabilités annoncées "
+                "reflètent la réalité (ex : une prédiction à 70 % se vérifie ~70 % du temps)."
+            )
+        else:
+            st.info("Données de calibration indisponibles.")
+
+    # Feature importance — coefficients de la LogReg sous-jacente
+    with pcol2:
+        st.markdown("**Importance des indicateurs**")
+        if fi:
+            FEATURE_SHORT = {
+                "diff_elo_surface": "Écart Elo surface",
+                "diff_elo_global": "Écart Elo global",
+                "diff_rank": "Écart classement",
+                "diff_age": "Écart d'âge",
+                "h2h_ratio": "Ratio H2H",
+                "surface_winrate_diff": "Écart % vict. surface",
+                "recent_form_diff": "Forme récente (10)",
+            }
+            fi_df = (
+                pd.DataFrame(
+                    {
+                        "feature": [FEATURE_SHORT.get(k, k) for k in fi],
+                        "coef": list(fi.values()),
+                    }
+                )
+                .assign(abs_coef=lambda d: d["coef"].abs())
+                .sort_values("abs_coef", ascending=True)
+            )
+            fig_fi = go.Figure(
+                go.Bar(
+                    x=fi_df["coef"],
+                    y=fi_df["feature"],
+                    orientation="h",
+                    marker=dict(
+                        color=[TENNIS_GREEN if c > 0 else TENNIS_CLAY for c in fi_df["coef"]],
+                    ),
+                    text=[f"{c:+.2f}" for c in fi_df["coef"]],
+                    textposition="outside",
+                    hovertemplate="<b>%{y}</b><br>Coefficient : %{x:+.3f}<extra></extra>",
+                )
+            )
+            fig_fi.update_layout(
+                xaxis_title="Coefficient (échelle standardisée)",
+                yaxis_title=None,
+                height=380,
+                margin=dict(l=10, r=40),
+            )
+            apply_tennis_theme(fig_fi)
+            st.plotly_chart(fig_fi, use_container_width=True)
+            st.caption(
+                "Coefficient positif (vert) = augmente la probabilité de victoire du joueur A. "
+                "Plus la barre est longue, plus l'indicateur pèse dans la décision."
+            )
+        else:
+            st.info("Coefficients indisponibles.")

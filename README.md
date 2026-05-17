@@ -57,6 +57,11 @@ cp .env.example .env   # adapter ROOT_PATH si besoin
 # Ingestion complète (télécharge les CSV Sackmann, filtre 2010+, écrit les parquets)
 uv run tennis-ingest
 
+# Variantes utiles
+uv run tennis-ingest --skip-download              # ré-utilise les CSV locaux data/raw/
+uv run tennis-ingest --skip-download --skip-build # ne fait que la matérialisation interim
+uv run tennis-ingest --root /chemin/autre         # racine projet alternative
+
 # Recalcul des Elo et contexte pré-match
 uv run python -m transformation.build_elo
 
@@ -66,6 +71,13 @@ uv run python -m transformation.build_model
 # Application Streamlit
 uv run streamlit run app/Home.py
 ```
+
+## Automatisation
+
+Le workflow GitHub Actions `.github/workflows/daily_ingest.yml` est **actif** :
+chaque jour à 04:00 UTC, il télécharge les nouveaux CSV Sackmann, reconstruit
+les parquets et le modèle, puis ouvre une PR `data/update-<run_id>`. Déclenchement
+manuel possible via *Actions → Ingestion quotidienne → Run workflow*.
 
 ## Qualité et tests
 
