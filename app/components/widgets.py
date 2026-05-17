@@ -1,7 +1,24 @@
-"""Widgets Streamlit réutilisables (sélecteurs, formatage FR)."""
+"""Widgets Streamlit réutilisables (sélecteurs, formatage FR, composants UI).
+
+Composants UI obligatoires (dashboard pro) — à utiliser plutôt que les éléments
+natifs Streamlit bruts :
+
+- :func:`page_header` — entête de page (titre + sous-titre) ; remplace
+  `st.title()`.
+- :func:`kpi_row` — ligne de KPI cards homogènes ; remplace
+  `st.columns(...)` + `st.metric(...)` recopiés.
+- :func:`section` — section avec divider doux optionnel ; remplace
+  `st.subheader()` brut.
+- :func:`card` — context manager pour grouper visuellement un bloc.
+- :func:`df_styled` — wrapper :func:`st.dataframe` avec auto-détection des
+  `column_config` (Elo, dates, pourcentages, rang, drapeaux IOC).
+"""
 
 from __future__ import annotations
 
+import html
+import re
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -494,6 +511,177 @@ def inject_global_css() -> None:
     st.markdown(
         """
         <style>
+        /* ── Variables racine (dashboard pro) ───────────────────────────── */
+        :root {
+            --tennis-hard: #1F4E79;
+            --tennis-clay: #C27940;
+            --tennis-green: #3A7D44;
+            --tennis-line: #2F2F2F;
+            --gray-900: #1f2937;
+            --gray-600: #4b5563;
+            --gray-500: #6b7280;
+            --gray-400: #9ca3af;
+            --gray-200: #eaecef;
+            --gray-100: #f3f4f6;
+            --bg-card: #ffffff;
+            --radius: 10px;
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        /* ── Container principal : marges resserrées dashboard ──────────── */
+        .block-container {
+            padding-top: 1.5rem !important;
+            padding-bottom: 3rem !important;
+            max-width: 1200px;
+        }
+
+        /* ── Typographie titres (letter-spacing serré, look pro) ────────── */
+        h1, h2, h3 {
+            letter-spacing: -0.015em;
+            color: var(--gray-900);
+        }
+        h2, h3 {
+            font-weight: 650;
+        }
+
+        /* ── Page header (titre + sous-titre) ───────────────────────────── */
+        .page-header {
+            margin: 0 0 1.25rem 0;
+        }
+        .page-header h1 {
+            font-size: 1.85rem;
+            font-weight: 700;
+            margin: 0 0 4px 0;
+            line-height: 1.2;
+        }
+        .page-header .page-subtitle {
+            color: var(--gray-500);
+            font-size: 0.98rem;
+            line-height: 1.55;
+            margin: 0;
+        }
+
+        /* ── KPI cards (look dashboard moderne) ─────────────────────────── */
+        .kpi-card {
+            background: var(--bg-card);
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius);
+            padding: 14px 16px;
+            box-shadow: var(--shadow-sm);
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            height: 100%;
+            box-sizing: border-box;
+        }
+        .kpi-card:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
+        .kpi-card .kpi-label {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--gray-500);
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        .kpi-card .kpi-value {
+            font-size: 1.6rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: var(--gray-900);
+            line-height: 1.2;
+        }
+        .kpi-card .kpi-delta {
+            font-size: 0.78rem;
+            margin-top: 4px;
+            color: var(--gray-500);
+        }
+        .kpi-card .kpi-delta.delta-up { color: var(--tennis-green); }
+        .kpi-card .kpi-delta.delta-down { color: #b54848; }
+
+        /* ── Surcharge st.metric pour le même look que kpi-card ─────────── */
+        [data-testid="stMetric"] {
+            background: var(--bg-card);
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius);
+            padding: 14px 16px;
+            box-shadow: var(--shadow-sm);
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        [data-testid="stMetric"]:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
+        [data-testid="stMetricLabel"] {
+            color: var(--gray-500) !important;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-size: 0.72rem !important;
+            font-weight: 600 !important;
+        }
+        [data-testid="stMetricValue"] {
+            font-weight: 700 !important;
+            letter-spacing: -0.02em;
+            color: var(--gray-900);
+        }
+
+        /* ── Soft divider (plus discret que st.divider) ─────────────────── */
+        .soft-divider {
+            border: none;
+            border-top: 1px solid var(--gray-200);
+            margin: 1.25rem 0;
+        }
+
+        /* ── Containers avec bordure (cards via st.container(border=True)) */
+        [data-testid="stVerticalBlockBorderWrapper"] {
+            border-radius: var(--radius) !important;
+            border-color: var(--gray-200) !important;
+            box-shadow: var(--shadow-sm);
+        }
+
+        /* ── Tooltip Elo (déplacé depuis Home.py inline style) ──────────── */
+        .elo-tooltip {
+            position: relative;
+            display: inline-block;
+            color: var(--tennis-green);
+            font-weight: 600;
+            border-bottom: 1px dashed var(--tennis-green);
+            cursor: help;
+        }
+        .elo-tooltip .elo-tip {
+            visibility: hidden;
+            opacity: 0;
+            width: 300px;
+            background: #1e2d24;
+            color: #f0f7f2;
+            font-size: 0.82rem;
+            line-height: 1.6;
+            border-radius: 8px;
+            padding: 12px 14px;
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+            transition: opacity 0.2s ease;
+            z-index: 9999;
+            pointer-events: none;
+        }
+        .elo-tooltip .elo-tip::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 6px solid transparent;
+            border-top-color: #1e2d24;
+        }
+        .elo-tooltip:hover .elo-tip {
+            visibility: visible;
+            opacity: 1;
+        }
+
         /* ── Anti-débordement horizontal global ─────────────────────────── */
         html, body, [data-testid="stAppViewContainer"], .main, .stApp {
             overflow-x: hidden !important;
@@ -512,6 +700,14 @@ def inject_global_css() -> None:
 
         /* ── Encart info-band : largeur sûre ────────────────────────────── */
         .info-band {
+            background: linear-gradient(135deg, #f4f9f5 0%, #eaf3ec 100%);
+            border-left: 4px solid var(--tennis-green);
+            border-radius: 0 8px 8px 0;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            color: #3a3a3a;
+            font-size: 0.92rem;
+            line-height: 1.6;
             max-width: 100% !important;
             box-sizing: border-box !important;
             word-wrap: break-word !important;
@@ -654,27 +850,6 @@ def inject_global_css() -> None:
     )
 
 
-def page_info(text: str, icon: str = "🎾") -> None:
-    """Affiche un encart descriptif soft au style tennis (vert discret)."""
-    st.markdown(
-        f"""
-        <div style="
-            background: linear-gradient(135deg, #f4f9f5 0%, #eaf3ec 100%);
-            border-left: 4px solid #3A7D44;
-            border-radius: 0 8px 8px 0;
-            padding: 12px 16px;
-            margin-bottom: 16px;
-            color: #3a3a3a;
-            font-size: 0.92rem;
-            line-height: 1.6;
-        ">
-        {icon}&nbsp; {text}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
 @st.cache_resource(show_spinner=False)
 def load_model_bundle(model_path: str) -> dict | None:
     """Charge le bundle joblib {'model': ..., 'features': [...]}."""
@@ -684,3 +859,189 @@ def load_model_bundle(model_path: str) -> dict | None:
     if not p.exists():
         return None
     return joblib.load(str(p))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Composants UI dashboard pro (page_header, kpi_row, section, card, df_styled)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def page_header(title: str, subtitle: str | None = None, icon: str | None = None) -> None:
+    """Entête de page unifié (titre + sous-titre optionnel) — look dashboard pro.
+
+    Remplace `st.title(...)`. Toutes les valeurs interpolées sont échappées HTML.
+
+    Args:
+        title: Titre principal de la page.
+        subtitle: Sous-titre descriptif (facultatif).
+        icon: Emoji ou symbole affiché devant le titre (facultatif).
+    """
+    safe_title = html.escape(str(title))
+    icon_html = f"{html.escape(icon)} " if icon else ""
+    subtitle_html = f'<p class="page-subtitle">{html.escape(str(subtitle))}</p>' if subtitle else ""
+    st.markdown(
+        f"""
+        <div class="page-header">
+            <h1>{icon_html}{safe_title}</h1>
+            {subtitle_html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def kpi_row(metrics: list[dict[str, Any]], columns: int | None = None) -> None:
+    """Affiche une ligne de KPI cards homogènes.
+
+    Chaque dict accepte les clés ``label`` (str, obligatoire), ``value`` (any,
+    obligatoire), ``delta`` (str optionnel), ``delta_dir`` ('up'/'down'/'neutral',
+    optionnel — colore le delta), ``help`` (tooltip optionnel), ``icon`` (emoji
+    optionnel devant le label).
+
+    Args:
+        metrics: Liste de dicts décrivant chaque KPI.
+        columns: Nombre forcé de colonnes (par défaut, autant que de métriques).
+    """
+    if not metrics:
+        return
+    n = columns or len(metrics)
+    cols = st.columns(n)
+    for i, m in enumerate(metrics):
+        col = cols[i % n]
+        label_raw = str(m.get("label", ""))
+        icon = m.get("icon")
+        label_html = (
+            f"{html.escape(icon)} {html.escape(label_raw)}" if icon else html.escape(label_raw)
+        )
+        value_html = html.escape(str(m.get("value", "—")))
+        delta_html = ""
+        if m.get("delta"):
+            direction = str(m.get("delta_dir", "neutral")).lower()
+            delta_class = {
+                "up": "delta-up",
+                "down": "delta-down",
+            }.get(direction, "")
+            delta_html = (
+                f'<div class="kpi-delta {delta_class}">{html.escape(str(m["delta"]))}</div>'
+            )
+        help_attr = f' title="{html.escape(str(m["help"]))}"' if m.get("help") else ""
+        with col:
+            st.markdown(
+                f"""
+                <div class="kpi-card"{help_attr}>
+                    <div class="kpi-label">{label_html}</div>
+                    <div class="kpi-value">{value_html}</div>
+                    {delta_html}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+
+def section(
+    title: str,
+    *,
+    level: int = 2,
+    divider_before: bool = False,
+    anchor: str | None = None,
+) -> None:
+    """Affiche un titre de section unifié (avec divider doux optionnel).
+
+    Args:
+        title: Texte du titre.
+        level: Niveau de titre HTML (2 = h2 par défaut, 3 = h3, …).
+        divider_before: Si True, insère un `<hr class="soft-divider"/>` au-dessus.
+        anchor: Identifiant HTML ancre stable (slug auto sinon).
+    """
+    if divider_before:
+        st.markdown('<hr class="soft-divider"/>', unsafe_allow_html=True)
+    level = max(2, min(level, 6))
+    safe_title = html.escape(str(title))
+    if anchor is None:
+        anchor = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "section"
+    st.markdown(
+        f'<h{level} id="{html.escape(anchor)}">{safe_title}</h{level}>',
+        unsafe_allow_html=True,
+    )
+
+
+@contextmanager
+def card(*, border: bool = True):
+    """Context manager pour grouper visuellement un bloc (card avec ombre).
+
+    Usage :
+
+        with card():
+            st.write("Contenu groupé")
+
+    Args:
+        border: Si True, utilise `st.container(border=True)` (style override
+            via CSS pour l'ombre et le radius).
+    """
+    container = st.container(border=border)
+    with container:
+        yield container
+
+
+def _auto_column_config(df: pd.DataFrame) -> dict[str, Any]:
+    """Détecte automatiquement les `column_config` pour les colonnes connues.
+
+    Détection (priorité de gauche à droite) :
+    - col contenant ``elo`` → NumberColumn format entier
+    - col contenant ``rang`` ou ``rank`` → NumberColumn format ``#%d``
+    - col contenant ``pct`` / ``taux`` / ``winrate`` / ``%`` → ProgressColumn 0 a 100
+    - col contenant ``minutes`` / ``durée`` / ``duree`` → NumberColumn ``%d min``
+    - col == ``date`` ou contenant ``date`` → DateColumn DD/MM/YYYY (best-effort)
+
+    Returns:
+        Dict prêt à passer en `column_config` à `st.dataframe`.
+    """
+    config: dict[str, Any] = {}
+    for col in df.columns:
+        name = str(col).lower()
+        if "elo" in name:
+            config[col] = st.column_config.NumberColumn(format="%d")
+        elif "rang" in name or name == "rank" or name.endswith("_rank"):
+            config[col] = st.column_config.NumberColumn(format="#%d")
+        elif "winrate" in name or name.endswith("_pct") or "taux" in name or name == "%":
+            config[col] = st.column_config.ProgressColumn(
+                min_value=0, max_value=100, format="%.1f %%"
+            )
+        elif "minutes" in name or "duree" in name or "durée" in name:
+            config[col] = st.column_config.NumberColumn(format="%d min")
+        elif name == "annee" or name == "année" or name == "year":
+            config[col] = st.column_config.NumberColumn(format="%d")
+    return config
+
+
+def df_styled(
+    df: pd.DataFrame,
+    *,
+    column_config: dict[str, Any] | None = None,
+    height: int | None = None,
+    hide_index: bool = True,
+    use_container_width: bool = True,
+) -> None:
+    """Wrapper :func:`st.dataframe` avec column_config auto-détecté.
+
+    L'auto-détection couvre les colonnes Elo, rang, pourcentages, durées et
+    années (cf. :func:`_auto_column_config`). Le `column_config` fourni
+    par l'appelant a priorité sur l'auto-détection.
+
+    Args:
+        df: DataFrame à afficher.
+        column_config: Overrides explicites (priorité sur l'auto-détection).
+        height: Hauteur en pixels (Streamlit décide si None).
+        hide_index: Masque l'index pandas par défaut.
+        use_container_width: Étend à la largeur du container.
+    """
+    merged = _auto_column_config(df)
+    if column_config:
+        merged.update(column_config)
+    st.dataframe(
+        df,
+        column_config=merged if merged else None,
+        height=height,
+        hide_index=hide_index,
+        use_container_width=use_container_width,
+    )

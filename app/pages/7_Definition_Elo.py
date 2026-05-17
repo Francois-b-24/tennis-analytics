@@ -13,15 +13,18 @@ _ROOT, _ = init_app(__file__)
 import pandas as pd
 import streamlit as st
 
-from components.widgets import inject_global_css, page_info
+from components.widgets import df_styled, inject_global_css, page_header, section
 
 st.set_page_config(page_title="Définition Elo — Tennis Analytics", layout="wide")
 inject_global_css()
 
-st.title("Définition du rating Elo")
-page_info(
-    "Document de référence détaillant le système de notation Elo appliqué au tennis : "
-    "principes mathématiques, ajustements par surface, facteur K adaptatif et décroissance d'inactivité."
+page_header(
+    "Définition du rating Elo",
+    subtitle=(
+        "Document de référence : principes mathématiques, ajustements par surface, "
+        "facteur K adaptatif et décroissance d'inactivité."
+    ),
+    icon="📖",
 )
 
 PDF_PATH = _ROOT / "docs" / "elo_tennis_definition.pdf"
@@ -37,10 +40,8 @@ if PDF_PATH.exists():
         type="secondary",
     )
 
-st.divider()
-
 # ── Section 1 — Définition ───────────────────────────────────────────────────
-st.markdown("## 1. Définition")
+section("1. Définition", level=2, divider_before=True)
 st.markdown(
     """
 Le **rating Elo** est un système de classement qui attribue un score numérique à
@@ -68,10 +69,8 @@ st.markdown(
 """
 )
 
-st.divider()
-
 # ── Section 2 — Mécanique mathématique ───────────────────────────────────────
-st.markdown("## 2. La mécanique mathématique")
+section("2. La mécanique mathématique", level=2, divider_before=True)
 st.markdown(
     """
 Tout le système Elo tient en **deux formules**. C'est là sa beauté : une élégance
@@ -101,10 +100,8 @@ st.info(
     "à environ **60 %**."
 )
 
-st.divider()
-
 # ── Section 3 — Facteur K ────────────────────────────────────────────────────
-st.markdown("## 3. Le facteur K : régler la vitesse d'apprentissage")
+section("3. Le facteur K : régler la vitesse d'apprentissage", level=2, divider_before=True)
 st.markdown(
     """
 Le **facteur K** détermine la vitesse à laquelle le rating Elo s'ajuste après
@@ -125,7 +122,7 @@ df_k = pd.DataFrame(
         "Variation type": ["± 16 points", "± 8 points", "± 4 points"],
     }
 )
-st.dataframe(df_k, use_container_width=True, hide_index=True)
+df_styled(df_k)
 
 st.markdown(
     """
@@ -142,10 +139,8 @@ du niveau réel.
 """
 )
 
-st.divider()
-
 # ── Section 4 — Elo par surface ──────────────────────────────────────────────
-st.markdown("## 4. L'Elo par surface : un raffinement essentiel")
+section("4. L'Elo par surface : un raffinement essentiel", level=2, divider_before=True)
 st.markdown(
     """
 Le tennis est unique parmi les sports majeurs : un même joueur peut être
@@ -180,12 +175,10 @@ df_surf = pd.DataFrame(
         ],
     }
 )
-st.dataframe(df_surf, use_container_width=True, hide_index=True)
-
-st.divider()
+df_styled(df_surf)
 
 # ── Section 5 — Échelle indicative ───────────────────────────────────────────
-st.markdown("## 5. Échelle indicative des ratings Elo")
+section("5. Échelle indicative des ratings Elo", level=2, divider_before=True)
 
 df_echelle = pd.DataFrame(
     {
@@ -206,7 +199,7 @@ df_echelle = pd.DataFrame(
         ],
     }
 )
-st.dataframe(df_echelle, use_container_width=True, hide_index=True)
+df_styled(df_echelle)
 
 st.caption(
     "Ces ordres de grandeur restent approximatifs et dépendent de l'implémentation "
@@ -215,10 +208,8 @@ st.caption(
     "produits par notre plateforme."
 )
 
-st.divider()
-
 # ── Section 6 — Décroissance d'inactivité ────────────────────────────────────
-st.markdown("## 6. Décroissance d'inactivité")
+section("6. Décroissance d'inactivité", level=2, divider_before=True)
 st.markdown(
     """
 Quand un joueur ne joue pas pendant **plus de 6 mois** (blessure, retraite
@@ -228,10 +219,8 @@ indéfiniment un rating élevé qui ne reflète plus son niveau actuel.
 """
 )
 
-st.divider()
-
 # ── Section 7 — Implémentation Python ────────────────────────────────────────
-st.markdown("## 7. Implémentation Python simplifiée")
+section("7. Implémentation Python simplifiée", level=2, divider_before=True)
 st.markdown(
     "Pour illustrer la simplicité du système, voici une fonction Python minimale "
     "qui applique les deux formules vues précédemment :"
@@ -260,10 +249,8 @@ résultats.
 """
 )
 
-st.divider()
-
 # ── Section 8 — Pour aller plus loin ─────────────────────────────────────────
-st.markdown("## 8. Pour aller plus loin")
+section("8. Pour aller plus loin", level=2, divider_before=True)
 st.markdown(
     """
 - **FiveThirtyEight** — Méthodologie complète de leur modèle Elo tennis publiée en ligne.

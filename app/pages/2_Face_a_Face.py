@@ -19,42 +19,18 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from components.plotly_theme import apply_tennis_theme
+from components.queries import player_options
 from components.widgets import (
     circuit_selectbox,
+    df_styled,
     format_date_dd_mm_yyyy,
     inject_global_css,
-    load_player_options,
-    page_info,
+    kpi_row,
+    page_header,
     player_selectbox,
+    section,
 )
 from db.duckdb_session import create_connection
-
-
-@st.cache_data(show_spinner=False)
-def _player_options_circuit(_root: str, circuit: str) -> pd.DataFrame:
-    """Liste joueurs avec déduplication par player_id et code pays IOC."""
-    conn = _connection()
-    cols = conn.execute("DESCRIBE v_players").df()["column_name"].tolist()
-    pays_col = "ioc" if "ioc" in cols else ("country_code" if "country_code" in cols else "NULL")
-    where_circuit = "" if circuit == "Tous" else "WHERE circuit = ?"
-    sql = f"""
-        SELECT player_id,
-               TRIM(CONCAT(COALESCE(ANY_VALUE(name_first), ''),
-                           ' ',
-                           COALESCE(ANY_VALUE(name_last), ''))) AS full_name,
-               ANY_VALUE({pays_col}) AS ioc
-        FROM v_players
-        {where_circuit}
-        GROUP BY player_id
-        HAVING TRIM(CONCAT(COALESCE(ANY_VALUE(name_first), ''),
-                           ' ',
-                           COALESCE(ANY_VALUE(name_last), ''))) <> ''
-    """
-    try:
-        params = [] if circuit == "Tous" else [circuit]
-        return conn.execute(sql, params).df()
-    except duckdb.Error:
-        return load_player_options(conn)
 
 
 @st.cache_resource(show_spinner=False)
@@ -246,12 +222,19 @@ def _favorite_message(
 
 st.set_page_config(page_title="Face à Face — Tennis Analytics", layout="wide")
 inject_global_css()
-st.title("Face à Face (H2H)")
+page_header(
+    "Face à Face (H2H)",
+    subtitle=(
+        "Bilan H2H global et par surface, historique des confrontations, radar comparatif "
+        "et favori Elo entre deux joueurs."
+    ),
+    icon="⚔️",
+)
 
 circuit = circuit_selectbox(key="h2h_circuit", default="ATP")
 
 connection = _connection()
-players = _player_options_circuit(str(_ROOT), circuit)
+players = player_options(str(_ROOT), circuit)
 if players.empty:
     st.warning("Aucun joueur disponible pour ce circuit.")
     st.stop()
@@ -266,12 +249,7 @@ surface_filter = st.selectbox(
     "Surface de référence pour le favori Elo",
     ["Global", "Dur", "Terre battue", "Gazon"],
     index=0,
-)
-
-page_info(
-    "Comparez deux joueurs en face à face : bilan H2H global et par surface, "
-    "historique de toutes leurs confrontations, radar comparatif de leur style de jeu "
-    "(service, première balle, balles de break) et prédiction du favori selon l'Elo."
+    help="Détermine quelle surface est utilisée pour estimer le favori.",
 )
 
 if player_a is None or player_b is None or player_a == player_b:
@@ -283,7 +261,8 @@ name_b = players.loc[players["player_id"] == player_b, "full_name"].iloc[0]
 
 st.markdown(_favorite_message(player_a, player_b, name_a, name_b, surface_filter))
 
-summary = _h2h_summary(str(_ROOT), player_a, player_b)
+with st.spinner("Calcul du H2H…"):
+    summary = _h2h_summary(str(_ROOT), player_a, player_b)
 if not summary.empty:
 
     def _safe_int(v: object) -> int:
@@ -296,18 +275,21 @@ if not summary.empty:
     total = _safe_int(summary.iloc[0]["total"])
     wins_a = _safe_int(summary.iloc[0]["wins_a"])
     wins_b = _safe_int(summary.iloc[0]["wins_b"])
-    st.subheader("Bilan global")
+    section("Bilan global", level=3, divider_before=True)
     if total == 0:
         st.info(f"Aucune confrontation trouvée entre {name_a} et {name_b}.")
     else:
-        st.write(
-            f"{name_a} mène **{wins_a}** à **{wins_b}** sur **{total}** "
-            "rencontres officielles indexées."
+        kpi_row(
+            [
+                {"label": "Confrontations", "value": str(total), "icon": "🎾"},
+                {"label": name_a, "value": str(wins_a), "icon": "🅰️"},
+                {"label": name_b, "value": str(wins_b), "icon": "🅱️"},
+            ]
         )
 
 surface_df = _h2h_surface(str(_ROOT), player_a, player_b)
 if not surface_df.empty:
-    st.subheader("Bilan par surface")
+    section("Bilan par surface", level=3)
     display = surface_df.rename(
         columns={
             "surface_label": "Surface",
@@ -316,7 +298,7 @@ if not surface_df.empty:
             "wins_b": f"Victoires {name_b}",
         }
     )
-    st.dataframe(display, use_container_width=True, hide_index=True)
+    df_styled(display)
 
     # ── Heatmap divergente : domination relative par surface ─────────────────
     # On ne garde que les 3 surfaces principales et on calcule le % de victoires
@@ -382,8 +364,9 @@ if not surface_df.empty:
             "La cellule affiche le bilan brut et le % de victoires."
         )
 
-matches_df = _h2h_matches(str(_ROOT), player_a, player_b)
-st.subheader("Historique des matchs")
+with st.spinner("Chargement de l'historique…"):
+    matches_df = _h2h_matches(str(_ROOT), player_a, player_b)
+section("Historique des matchs", level=3, divider_before=True)
 if matches_df.empty:
     st.info("Pas de confrontations dans le jeu de données filtré.")
 else:
@@ -400,7 +383,7 @@ else:
             "minutes": "Durée (min)",
         }
     )
-    st.dataframe(
+    df_styled(
         display_matches[
             [
                 "Date",
@@ -412,12 +395,10 @@ else:
                 "Score",
                 "Durée (min)",
             ]
-        ],
-        use_container_width=True,
-        hide_index=True,
+        ]
     )
 
-st.subheader("Radar des statistiques clés (moyennes H2H)")
+section("Radar des statistiques clés (moyennes H2H)", level=3, divider_before=True)
 prof_a = _profile_from_matches(matches_df, player_a)
 prof_b = _profile_from_matches(matches_df, player_b)
 

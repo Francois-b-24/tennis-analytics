@@ -23,7 +23,15 @@ from components.plotly_theme import (
     TENNIS_LINE,
     apply_tennis_theme,
 )
-from components.widgets import country_flag_with_code, format_elo, inject_global_css, page_info
+from components.widgets import (
+    country_flag_with_code,
+    df_styled,
+    format_elo,
+    inject_global_css,
+    kpi_row,
+    page_header,
+    section,
+)
 from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Top 20 actuel — Tennis Analytics", layout="wide")
@@ -202,11 +210,13 @@ def _atp_vs_wta_top20_stats(_root: str) -> pd.DataFrame:
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 circuit_filter = st.sidebar.selectbox("Circuit", ["Les deux", "ATP", "WTA"], key="top20_circuit")
 
-st.title("Top 20 actuel — Élite mondiale")
-page_info(
-    "Focus sur les <strong>20 meilleurs joueurs ATP et WTA actuels</strong> selon leur rating Elo "
-    "global le plus récent. Explorez leurs ratings par surface, leur forme récente, leur style de jeu "
-    "— et comparez les tendances structurelles entre les deux circuits."
+page_header(
+    "Top 20 actuel — Élite mondiale",
+    subtitle=(
+        "20 meilleurs joueurs ATP et WTA selon leur rating Elo global le plus récent. "
+        "Ratings par surface, forme récente, style de jeu, comparaison ATP vs WTA."
+    ),
+    icon="🌟",
 )
 
 # ── Données Top 20 ATP + WTA ─────────────────────────────────────────────────
@@ -226,13 +236,12 @@ else:
     df_top = pd.concat([top_atp, top_wta], ignore_index=True)
 
 # ── Section 1 : Tableau du Top 20 ────────────────────────────────────────────
-st.subheader(f"Classement — {circuit_filter}")
+section(f"Classement — {circuit_filter}", level=3)
 
 display_df = df_top.copy()
 if circuit_filter == "Les deux":
     display_df["Circuit"] = ["ATP"] * len(top_atp) + ["WTA"] * len(top_wta)
 
-# Conversion IOC → emoji drapeau + code
 display_df["pays"] = display_df["pays"].apply(country_flag_with_code)
 
 display_df = display_df.rename(
@@ -250,12 +259,19 @@ display_df = display_df.rename(
 ordered = ["Circuit", "Rang", "Joueur", "Pays", "Elo global", "Elo dur", "Elo terre", "Elo gazon"]
 final_cols = [c for c in ordered if c in display_df.columns]
 
-st.dataframe(display_df[final_cols], use_container_width=True, hide_index=True)
-
-st.divider()
+df_styled(
+    display_df[final_cols],
+    column_config={
+        "Rang": st.column_config.NumberColumn(format="#%d"),
+        "Elo global": st.column_config.NumberColumn(format="%d"),
+        "Elo dur": st.column_config.NumberColumn(format="%d"),
+        "Elo terre": st.column_config.NumberColumn(format="%d"),
+        "Elo gazon": st.column_config.NumberColumn(format="%d"),
+    },
+)
 
 # ── Section 2 : Focus joueur ─────────────────────────────────────────────────
-st.subheader("Zoom sur un joueur")
+section("Zoom sur un joueur", level=3, divider_before=True)
 
 
 # Construit un label unique : "Joueur (PAYS)" pour eviter toute collision
@@ -272,6 +288,8 @@ selected = st.selectbox(
     "Sélectionner un joueur",
     list(mapping.keys()),
     key="top20_player_select",
+    help="💡 Tapez pour rechercher",
+    placeholder="Rechercher un joueur…",
 )
 pid = int(mapping[selected])
 
@@ -285,35 +303,28 @@ form_pct, form_seq = _player_recent_form(str(_ROOT), pid)
 surf_winrate = _player_surface_winrate(str(_ROOT), pid)
 
 # Carte d'identité — métriques principales
-m1, m2, m3, m4 = st.columns(4)
-with m1:
-    st.metric("Rang", f"#{int(row['rang'])}")
-with m2:
-    st.metric("Elo global", format_elo(row["elo_global"]))
-with m3:
-    if not career.empty:
-        import math as _m
+import math as _m
 
-        _wins_raw = career.iloc[0]["wins"]
-        _win_pct_raw = career.iloc[0]["win_pct"]
-        _wins = (
-            0
-            if _wins_raw is None or (isinstance(_wins_raw, float) and _m.isnan(_wins_raw))
-            else int(_wins_raw)
-        )
-        _wp = (
-            0.0
-            if _win_pct_raw is None or (isinstance(_win_pct_raw, float) and _m.isnan(_win_pct_raw))
-            else float(_win_pct_raw)
-        )
-        st.metric(
-            "Bilan carrière",
-            f"{_wins} V",
-            f"{_wp:.1f} %",
-            delta_color="off",
-        )
-with m4:
-    st.metric("Forme (20 derniers)", f"{form_pct:.0f} %")
+_wins_raw = career.iloc[0]["wins"] if not career.empty else None
+_win_pct_raw = career.iloc[0]["win_pct"] if not career.empty else None
+_wins = (
+    0
+    if _wins_raw is None or (isinstance(_wins_raw, float) and _m.isnan(_wins_raw))
+    else int(_wins_raw)
+)
+_wp = (
+    0.0
+    if _win_pct_raw is None or (isinstance(_win_pct_raw, float) and _m.isnan(_win_pct_raw))
+    else float(_win_pct_raw)
+)
+kpi_row(
+    [
+        {"label": "Rang", "value": f"#{int(row['rang'])}", "icon": "🥇"},
+        {"label": "Elo global", "value": format_elo(row["elo_global"]), "icon": "📊"},
+        {"label": "Bilan carrière", "value": f"{_wins} V", "delta": f"{_wp:.1f} %", "icon": "🎾"},
+        {"label": "Forme (20 derniers)", "value": f"{form_pct:.0f} %", "icon": "📈"},
+    ]
+)
 
 # Séquence V/D visuelle
 if form_seq:
@@ -412,10 +423,8 @@ with col_c:
         if c["tournaments"]:
             st.metric("Tournois joués", f"{int(c['tournaments'])}")
 
-st.divider()
-
 # ── Section 3 : Comparaison ATP vs WTA ───────────────────────────────────────
-st.subheader("Comparaison structurelle ATP vs WTA")
+section("Comparaison structurelle ATP vs WTA", level=3, divider_before=True)
 st.caption("Stats moyennes calculées sur tous les matchs joués par les Top 20 de chaque circuit.")
 
 cmp = _atp_vs_wta_top20_stats(str(_ROOT))

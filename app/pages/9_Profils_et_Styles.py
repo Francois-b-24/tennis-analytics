@@ -28,10 +28,13 @@ from components.plotly_theme import (
 )
 from components.widgets import (
     circuit_selectbox,
+    df_styled,
     format_elo,
     inject_global_css,
-    page_info,
+    kpi_row,
+    page_header,
     player_selectbox,
+    section,
 )
 from db.duckdb_session import create_connection
 
@@ -223,15 +226,18 @@ circuit = circuit_selectbox(key="profile_circuit", include_all=False, default="A
 n_clusters = st.sidebar.slider("Nombre de styles (clusters)", 3, 6, value=5)
 min_matches = st.sidebar.slider("Matchs minimum", 50, 300, value=100, step=10)
 
-st.title("Profils & Styles de jeu")
-page_info(
-    "Identifie automatiquement les styles de jeu par regroupement statistique (KMeans) "
-    "sur les indicateurs de service et de break-points. Mesure également la polyvalence "
-    "des joueurs (capacité à performer sur les 3 surfaces principales)."
+page_header(
+    "Profils & Styles de jeu",
+    subtitle=(
+        "Clustering KMeans des styles (service, break points) et indice de polyvalence "
+        "multi-surface."
+    ),
+    icon="🧬",
 )
 
 # ── Section A — Clustering KMeans ─────────────────────────────────────────────
-agg = _player_aggregates(str(_ROOT), circuit, min_matches=min_matches)
+with st.spinner("Calcul des agrégats joueurs…"):
+    agg = _player_aggregates(str(_ROOT), circuit, min_matches=min_matches)
 
 if agg.empty:
     st.warning(
@@ -268,8 +274,9 @@ if len(X) < n_clusters + 1:
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
-km = KMeans(n_clusters=n_clusters, n_init=10, random_state=42)
-agg_valid["cluster"] = km.fit_predict(X_scaled)
+with st.spinner(f"Clustering KMeans ({n_clusters} groupes)…"):
+    km = KMeans(n_clusters=n_clusters, n_init=10, random_state=42)
+    agg_valid["cluster"] = km.fit_predict(X_scaled)
 cluster_labels = _label_clusters(km.cluster_centers_, FEATURES)
 agg_valid["style"] = agg_valid["cluster"].map(dict(enumerate(cluster_labels)))
 
@@ -280,7 +287,7 @@ agg_valid["pc1"] = coords[:, 0]
 agg_valid["pc2"] = coords[:, 1]
 agg_valid["wins_pct"] = (agg_valid["wins"] / agg_valid["n_matches"] * 100).round(1)
 
-st.subheader(f"Carte des styles ({n_clusters} clusters, {len(agg_valid)} joueurs)")
+section(f"Carte des styles ({n_clusters} clusters, {len(agg_valid)} joueurs)", level=3)
 
 cluster_colors = [
     TENNIS_HARD,
@@ -333,29 +340,33 @@ st.plotly_chart(fig_scatter, use_container_width=True)
 with st.expander("📊 Profil moyen de chaque style"):
     summary = agg_valid.groupby("style")[FEATURES].mean().rename(columns=FEATURE_LABELS_FR).round(3)
     summary["Joueurs"] = agg_valid.groupby("style").size()
-    st.dataframe(summary, use_container_width=True)
-
-st.divider()
+    df_styled(summary.reset_index(), hide_index=True)
 
 # ── Section B — Zoom sur un joueur ───────────────────────────────────────────
-st.subheader("Zoom sur un joueur")
+section("Zoom sur un joueur", level=3, divider_before=True)
 
-player_options = agg_valid[["player_id", "full_name", "ioc"]].copy()
+zoom_options = agg_valid[["player_id", "full_name", "ioc"]].copy()
 selected_id = player_selectbox(
-    "Joueur (parmi les " + str(len(player_options)) + " avec stats complètes)",
-    player_options,
+    "Joueur (parmi les " + str(len(zoom_options)) + " avec stats complètes)",
+    zoom_options,
     key="profile_player_zoom",
 )
 
 if selected_id is not None:
     row = agg_valid[agg_valid["player_id"] == selected_id].iloc[0]
-    zcol1, zcol2, zcol3 = st.columns([1, 1, 2])
-    with zcol1:
-        st.metric("Style détecté", row["style"])
-        st.metric("Matchs joués", int(row["n_matches"]))
-    with zcol2:
-        st.metric("Victoires", f"{int(row['wins'])} ({row['wins_pct']:.1f} %)")
-    with zcol3:
+    kpi_row(
+        [
+            {"label": "Style détecté", "value": str(row["style"]), "icon": "🧬"},
+            {"label": "Matchs joués", "value": str(int(row["n_matches"])), "icon": "🎾"},
+            {
+                "label": "Victoires",
+                "value": f"{int(row['wins'])}",
+                "delta": f"{row['wins_pct']:.1f} %",
+                "icon": "🏆",
+            },
+        ]
+    )
+    with st.container():
         # Radar des 6 features du joueur vs médiane globale
         values_player = [row[f] for f in FEATURES]
         values_median = [float(agg_valid[f].median()) for f in FEATURES]
@@ -391,17 +402,15 @@ if selected_id is not None:
         apply_tennis_theme(fig_radar)
         st.plotly_chart(fig_radar, use_container_width=True)
 
-st.divider()
-
 # ── Section C — Indice de polyvalence ────────────────────────────────────────
-st.subheader("Indice de polyvalence multi-surface")
-page_info(
+section("Indice de polyvalence multi-surface", level=3, divider_before=True)
+st.caption(
     "Mesure la régularité d'un joueur entre Dur, Terre battue et Gazon : "
-    "100 = excelle uniformément sur les 3 surfaces, 0 = ultra-spécialiste. "
-    "Calculé sur l'écart-type des 3 Elos surface, normalisé."
+    "100 = excelle uniformément sur les 3 surfaces, 0 = ultra-spécialiste."
 )
 
-vers = _versatility_index(str(_ROOT), circuit, min_matches=min_matches)
+with st.spinner("Calcul de l'indice de polyvalence…"):
+    vers = _versatility_index(str(_ROOT), circuit, min_matches=min_matches)
 
 if vers.empty:
     st.info("Données Elo par surface indisponibles.")
@@ -453,27 +462,32 @@ else:
             display_v[col] = display_v[col].map(lambda v: format_elo(v) if pd.notna(v) else "—")
         display_v["versatility"] = display_v["versatility"].round(1)
         display_v.insert(0, "Rang", range(1, len(display_v) + 1))
-        st.dataframe(
-            display_v[
-                [
-                    "Rang",
-                    "full_name",
-                    "versatility",
-                    "elo_global",
-                    "elo_hard",
-                    "elo_clay",
-                    "elo_grass",
-                ]
-            ].rename(
-                columns={
-                    "full_name": "Joueur",
-                    "versatility": "Polyvalence",
-                    "elo_global": "Global",
-                    "elo_hard": "Dur",
-                    "elo_clay": "Terre",
-                    "elo_grass": "Gazon",
-                }
-            ),
-            use_container_width=True,
-            hide_index=True,
+        renamed = display_v[
+            [
+                "Rang",
+                "full_name",
+                "versatility",
+                "elo_global",
+                "elo_hard",
+                "elo_clay",
+                "elo_grass",
+            ]
+        ].rename(
+            columns={
+                "full_name": "Joueur",
+                "versatility": "Polyvalence",
+                "elo_global": "Global",
+                "elo_hard": "Dur",
+                "elo_clay": "Terre",
+                "elo_grass": "Gazon",
+            }
+        )
+        df_styled(
+            renamed,
+            column_config={
+                "Rang": st.column_config.NumberColumn(format="#%d"),
+                "Polyvalence": st.column_config.ProgressColumn(
+                    min_value=0, max_value=100, format="%.1f"
+                ),
+            },
         )

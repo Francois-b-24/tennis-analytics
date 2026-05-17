@@ -22,13 +22,17 @@ from components.plotly_theme import (
     TENNIS_GREEN,
     apply_tennis_theme,
 )
+from components.queries import player_options
 from components.widgets import (
     circuit_selectbox,
+    df_styled,
     inject_global_css,
+    kpi_row,
     load_model_bundle,
     load_player_options,
-    page_info,
+    page_header,
     player_selectbox,
+    section,
 )
 from db.duckdb_session import create_connection
 
@@ -163,11 +167,13 @@ def _get_elo(df: pd.DataFrame, col: str) -> float:
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 circuit = circuit_selectbox(key="pred_circuit", include_all=False, default="ATP")
 
-st.title("Prédictions")
-page_info(
-    "Estimez la probabilité de victoire entre deux joueurs sur une surface donnée. "
-    "Le modèle est une régression logistique calibrée entraînée sur ~90 000 matchs depuis 2010 — "
-    "il combine les ratings Elo, le bilan H2H, la forme récente et la spécialisation par surface."
+page_header(
+    "Prédictions",
+    subtitle=(
+        "Probabilité de victoire entre deux joueurs sur une surface — régression logistique "
+        "calibrée combinant Elo, H2H, forme récente et spécialisation par surface."
+    ),
+    icon="🤖",
 )
 
 # ── Vérification modèle ───────────────────────────────────────────────────────
@@ -182,26 +188,8 @@ if bundle is None:
 # ── Sélection joueurs ─────────────────────────────────────────────────────────
 connection = _connection()
 
-try:
-    cols = connection.execute("DESCRIBE v_players").df()["column_name"].tolist()
-    pays_col = "ioc" if "ioc" in cols else ("country_code" if "country_code" in cols else "NULL")
-    players = connection.execute(
-        f"""
-        SELECT player_id,
-               TRIM(CONCAT(COALESCE(ANY_VALUE(name_first), ''),
-                           ' ',
-                           COALESCE(ANY_VALUE(name_last), ''))) AS full_name,
-               ANY_VALUE({pays_col}) AS ioc
-        FROM v_players
-        WHERE circuit = ?
-        GROUP BY player_id
-        HAVING TRIM(CONCAT(COALESCE(ANY_VALUE(name_first), ''),
-                           ' ',
-                           COALESCE(ANY_VALUE(name_last), ''))) <> ''
-        """,
-        [circuit],
-    ).df()
-except duckdb.Error:
+players = player_options(str(_ROOT), circuit)
+if players.empty:
     players = load_player_options(connection)
 
 if players.empty:
@@ -214,7 +202,12 @@ with col_a:
 with col_b:
     player_b = player_selectbox("Joueur B", players, key="pred_b")
 
-surface_choice = st.selectbox("Surface", list(SURFACE_ELO_COL.keys()), key="pred_surface")
+surface_choice = st.selectbox(
+    "Surface",
+    list(SURFACE_ELO_COL.keys()),
+    key="pred_surface",
+    help="Surface utilisée pour calculer la probabilité et l'écart d'Elo de spécialisation.",
+)
 
 if player_a is None or player_b is None or player_a == player_b:
     st.warning("Choisissez deux joueurs distincts.")
@@ -259,35 +252,36 @@ features = {
 
 feature_cols = bundle["features"]
 X = pd.DataFrame([features])[feature_cols]
-prob_a = float(bundle["model"].predict_proba(X)[:, 1][0])
+with st.spinner("Inférence du modèle…"):
+    prob_a = float(bundle["model"].predict_proba(X)[:, 1][0])
 prob_b = 1.0 - prob_a
 
-st.divider()
-
 # ── Contexte des deux joueurs ─────────────────────────────────────────────────
-st.subheader("Contexte")
+section("Contexte", level=3, divider_before=True)
 
 ca, cb = st.columns(2)
 
 with ca:
-    st.markdown(f"#### {name_a}")
-    m1, m2 = st.columns(2)
-    with m1:
-        st.metric("Elo global", f"{int(round(ea_glob))}")
-        st.metric(f"Elo {surface_choice}", f"{int(round(ea_surf))}")
-    with m2:
-        st.metric("% victoires surface", f"{wr_a*100:.0f} %")
-        st.metric("Forme récente (10)", f"{form_a*100:.0f} %")
+    st.markdown(f"##### {name_a}")
+    kpi_row(
+        [
+            {"label": "Elo global", "value": f"{int(round(ea_glob))}", "icon": "📊"},
+            {"label": f"Elo {surface_choice}", "value": f"{int(round(ea_surf))}", "icon": "🎯"},
+            {"label": "% vict. surface", "value": f"{wr_a*100:.0f} %", "icon": "🏆"},
+            {"label": "Forme (10)", "value": f"{form_a*100:.0f} %", "icon": "📈"},
+        ]
+    )
 
 with cb:
-    st.markdown(f"#### {name_b}")
-    m1, m2 = st.columns(2)
-    with m1:
-        st.metric("Elo global", f"{int(round(eb_glob))}")
-        st.metric(f"Elo {surface_choice}", f"{int(round(eb_surf))}")
-    with m2:
-        st.metric("% victoires surface", f"{wr_b*100:.0f} %")
-        st.metric("Forme récente (10)", f"{form_b*100:.0f} %")
+    st.markdown(f"##### {name_b}")
+    kpi_row(
+        [
+            {"label": "Elo global", "value": f"{int(round(eb_glob))}", "icon": "📊"},
+            {"label": f"Elo {surface_choice}", "value": f"{int(round(eb_surf))}", "icon": "🎯"},
+            {"label": "% vict. surface", "value": f"{wr_b*100:.0f} %", "icon": "🏆"},
+            {"label": "Forme (10)", "value": f"{form_b*100:.0f} %", "icon": "📈"},
+        ]
+    )
 
 # H2H summary
 if h2h_total > 0:
@@ -299,10 +293,8 @@ if h2h_total > 0:
 else:
     st.caption("Aucune confrontation directe dans les données.")
 
-st.divider()
-
 # ── Probabilité de victoire ───────────────────────────────────────────────────
-st.subheader(f"Probabilité de victoire — {SURFACE_LABEL[surface_choice]}")
+section(f"Probabilité de victoire — {SURFACE_LABEL[surface_choice]}", level=3, divider_before=True)
 
 winner = name_a if prob_a >= prob_b else name_b
 win_prob = max(prob_a, prob_b)
@@ -364,7 +356,7 @@ with st.expander("Détail des indicateurs utilisés par le modèle"):
         {"Indicateur": FEATURE_LABELS[k], "Valeur": f"{v:+.3f}" if k != "h2h_ratio" else f"{v:.3f}"}
         for k, v in features.items()
     ]
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    df_styled(pd.DataFrame(rows))
 
 st.caption(
     "Modèle : régression logistique calibrée (isotonique) entraînée sur les matchs ATP/WTA "
@@ -375,31 +367,36 @@ st.caption(
 # ── Performance & transparence du modèle ─────────────────────────────────────
 diagnostics = bundle.get("diagnostics") if isinstance(bundle, dict) else None
 if diagnostics:
-    st.divider()
-    st.subheader("Performance et transparence du modèle")
+    section("Performance et transparence du modèle", level=3, divider_before=True)
 
     metrics_d = diagnostics.get("metrics", {})
-    mcol1, mcol2, mcol3, mcol4 = st.columns(4)
-    with mcol1:
-        st.metric(
-            "Brier score",
-            f"{metrics_d.get('brier', 0):.3f}",
-            help="Erreur quadratique moyenne sur les probabilités (0 = parfait, 0.25 = aléatoire).",
-        )
-    with mcol2:
-        st.metric(
-            "Log loss",
-            f"{metrics_d.get('log_loss', 0):.3f}",
-            help="Pénalise fortement les prédictions très confiantes mais fausses.",
-        )
-    with mcol3:
-        st.metric(
-            "Exactitude",
-            f"{metrics_d.get('accuracy', 0) * 100:.1f} %",
-            help="% de matchs où le favori prédit a effectivement gagné.",
-        )
-    with mcol4:
-        st.metric("Matchs de test", f"{metrics_d.get('n_test', 0):,}".replace(",", " "))
+    kpi_row(
+        [
+            {
+                "label": "Brier score",
+                "value": f"{metrics_d.get('brier', 0):.3f}",
+                "help": "Erreur quadratique moyenne sur les probabilités (0 = parfait, 0.25 = aléatoire).",
+                "icon": "🎯",
+            },
+            {
+                "label": "Log loss",
+                "value": f"{metrics_d.get('log_loss', 0):.3f}",
+                "help": "Pénalise fortement les prédictions confiantes mais fausses.",
+                "icon": "📉",
+            },
+            {
+                "label": "Exactitude",
+                "value": f"{metrics_d.get('accuracy', 0) * 100:.1f} %",
+                "help": "% de matchs où le favori prédit a effectivement gagné.",
+                "icon": "✅",
+            },
+            {
+                "label": "Matchs de test",
+                "value": f"{metrics_d.get('n_test', 0):,}".replace(",", " "),
+                "icon": "🎾",
+            },
+        ]
+    )
 
     cal = diagnostics.get("calibration") or {}
     fi = diagnostics.get("feature_importance") or {}

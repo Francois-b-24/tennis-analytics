@@ -22,7 +22,15 @@ from components.plotly_theme import (
     TENNIS_LINE,
     apply_tennis_theme,
 )
-from components.widgets import circuit_selectbox, inject_global_css, page_info
+from components.queries import tournaments_for_circuit
+from components.widgets import (
+    circuit_selectbox,
+    df_styled,
+    inject_global_css,
+    kpi_row,
+    page_header,
+    section,
+)
 from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Tournois — Tennis Analytics", layout="wide")
@@ -34,22 +42,6 @@ SURF_COLORS = {"Hard": TENNIS_HARD, "Clay": TENNIS_CLAY, "Grass": TENNIS_GREEN}
 @st.cache_resource(show_spinner=False)
 def _connection() -> duckdb.DuckDBPyConnection:
     return create_connection(_ROOT)
-
-
-@st.cache_data(show_spinner=False)
-def _tournament_list(_root: str, circuit: str) -> list[str]:
-    try:
-        df = (
-            _connection()
-            .execute(
-                "SELECT DISTINCT tourney_name FROM v_matches WHERE circuit = ? ORDER BY tourney_name",
-                [circuit],
-            )
-            .df()
-        )
-        return df["tourney_name"].tolist()
-    except duckdb.Error:
-        return []
 
 
 @st.cache_data(show_spinner=False)
@@ -158,28 +150,37 @@ def _surface_breakdown(_root: str, tourney: str, circuit: str) -> pd.DataFrame:
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 circuit = circuit_selectbox(key="tourn_circuit", include_all=False, default="ATP")
 
-st.title("Tournois")
-page_info(
-    "Explorez l'histoire d'un tournoi : palmarès des finales, joueurs les plus titrés, "
-    "évolution de la durée moyenne des matchs au fil des années et répartition par surface."
+page_header(
+    "Tournois",
+    subtitle=(
+        "Histoire d'un tournoi : palmarès des finales, joueurs les plus titrés, "
+        "évolution de la durée moyenne des matchs et répartition par surface."
+    ),
+    icon="🏆",
 )
 
-tournois = _tournament_list(str(_ROOT), circuit)
+tournois = tournaments_for_circuit(str(_ROOT), circuit)
 if not tournois:
     st.warning("Aucun tournoi disponible. Lancez l'ingestion pour construire les parquets.")
     st.stop()
 
-tourney = st.selectbox("Sélectionner un tournoi", tournois, key="tourn_select")
+tourney = st.selectbox(
+    "Sélectionner un tournoi",
+    tournois,
+    key="tourn_select",
+    help="💡 Tapez pour filtrer",
+    placeholder="Choisir un tournoi…",
+)
 
 # ── Section A — Palmarès ──────────────────────────────────────────────────────
-st.subheader(f"Palmarès — {tourney} ({circuit})")
+section(f"Palmarès — {tourney} ({circuit})", level=3)
 
 palmares = _palmares(str(_ROOT), tourney, circuit)
 
 if palmares.empty:
     st.info("Aucune finale disponible pour ce tournoi dans les données.")
 else:
-    st.dataframe(
+    df_styled(
         palmares.rename(
             columns={
                 "annee": "Année",
@@ -190,18 +191,14 @@ else:
                 "score": "Score",
                 "minutes": "Durée (min)",
             }
-        ),
-        use_container_width=True,
-        hide_index=True,
+        )
     )
-
-st.divider()
 
 # ── Section B — Top vainqueurs ────────────────────────────────────────────────
 top_w = _top_winners(str(_ROOT), tourney, circuit)
 
 if not top_w.empty:
-    st.subheader("Top vainqueurs")
+    section("Top vainqueurs", level=3, divider_before=True)
     fig_top = go.Figure(
         go.Bar(
             x=top_w["titres"],
@@ -223,7 +220,7 @@ if not top_w.empty:
     st.plotly_chart(fig_top, use_container_width=True)
 
     with st.expander("Tableau détaillé"):
-        st.dataframe(
+        df_styled(
             top_w.rename(
                 columns={
                     "winner_name": "Joueur",
@@ -231,18 +228,14 @@ if not top_w.empty:
                     "premiere": "1ère victoire",
                     "derniere": "Dernière victoire",
                 }
-            ),
-            use_container_width=True,
-            hide_index=True,
+            )
         )
-
-st.divider()
 
 # ── Section C — Durée par année ───────────────────────────────────────────────
 dur_df = _duration_by_year(str(_ROOT), tourney, circuit)
 
 if not dur_df.empty and dur_df["duree_moy"].notna().any():
-    st.subheader("Durée moyenne des matchs par année")
+    section("Durée moyenne des matchs par année", level=3, divider_before=True)
     fig_dur = go.Figure(
         go.Scatter(
             x=dur_df["annee"],
@@ -263,13 +256,11 @@ if not dur_df.empty and dur_df["duree_moy"].notna().any():
     apply_tennis_theme(fig_dur)
     st.plotly_chart(fig_dur, use_container_width=True)
 
-st.divider()
-
 # ── Section D — Répartition par surface ──────────────────────────────────────
 surf_df = _surface_breakdown(str(_ROOT), tourney, circuit)
 
 if not surf_df.empty:
-    st.subheader("Répartition par surface")
+    section("Répartition par surface", level=3, divider_before=True)
     surf_colors = [SURF_COLORS.get(s, TENNIS_LINE) for s in surf_df["surface"]]
     fig_surf = go.Figure(
         go.Bar(
@@ -291,12 +282,10 @@ if not surf_df.empty:
 
 
 # ── Section E — Parcours d'un joueur dans une édition ───────────────────────
-st.divider()
-st.subheader("Parcours d'un joueur dans une édition")
-page_info(
-    "Sélectionnez une année puis un joueur ayant disputé cette édition : "
-    "visualisez tous ses matchs round par round (R128 → finale), avec adversaire, "
-    "score, durée et niveau Elo du moment."
+section("Parcours d'un joueur dans une édition", level=3, divider_before=True)
+st.caption(
+    "Sélectionnez une année puis un joueur ayant disputé cette édition : tous "
+    "ses matchs round par round (R128 → finale)."
 )
 
 ROUND_ORDER = {
@@ -436,13 +425,13 @@ else:
                 )
             )
 
-            rcol1, rcol2, rcol3 = st.columns(3)
-            with rcol1:
-                st.metric("Matchs joués", n_matches)
-            with rcol2:
-                st.metric("Victoires", f"{n_wins} / {n_matches}")
-            with rcol3:
-                st.metric("Résultat", outcome)
+            kpi_row(
+                [
+                    {"label": "Matchs joués", "value": str(n_matches), "icon": "🎾"},
+                    {"label": "Victoires", "value": f"{n_wins} / {n_matches}", "icon": "🏆"},
+                    {"label": "Résultat", "value": outcome, "icon": "🥇"},
+                ]
+            )
 
             # Tableau du parcours
             display_run = run.copy()
@@ -458,4 +447,4 @@ else:
                     "surface": "Surface",
                 }
             )[["Tour", "V/D", "Adversaire", "Score", "Durée", "Surface"]]
-            st.dataframe(display_run, use_container_width=True, hide_index=True)
+            df_styled(display_run)

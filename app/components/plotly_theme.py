@@ -14,6 +14,13 @@ FONT_FAMILY: Final[str] = "Inter, ui-sans-serif, system-ui, -apple-system, Segoe
 
 TENNIS_PALETTE: Final[list[str]] = [TENNIS_HARD, TENNIS_CLAY, TENNIS_GREEN]
 
+# Mapping surface → couleur (centralisé pour les pages qui colorent par surface).
+SURFACE_COLORS: Final[dict[str, str]] = {
+    "Hard": TENNIS_HARD,
+    "Clay": TENNIS_CLAY,
+    "Grass": TENNIS_GREEN,
+}
+
 
 def apply_tennis_theme(fig: go.Figure) -> go.Figure:
     """Applique le thème tennis (couleurs, polices, axes) à une figure Plotly.
@@ -79,5 +86,28 @@ def apply_tennis_theme(fig: go.Figure) -> go.Figure:
         gridcolor="#F0F0F0",
         zerolinecolor="#E0E0E0",
         automargin=True,
+    )
+    return fig
+
+
+def apply_dashboard_density(fig: go.Figure, *, height: int = 320) -> go.Figure:
+    """Variante plus dense d'`apply_tennis_theme` (marges plus serrées, KPI charts).
+
+    À utiliser pour les petits charts en dashboard (sparklines, micro-comparaisons)
+    où l'on veut minimiser l'espace mort autour du tracé.
+
+    Args:
+        fig: Figure à styliser.
+        height: Hauteur cible (px). Streamlit ignorera si `use_container_width=True`
+            est utilisé conjointement.
+
+    Returns:
+        La même figure stylisée.
+    """
+    apply_tennis_theme(fig)
+    fig.update_layout(
+        margin=dict(l=35, r=15, t=30, b=30),
+        height=height,
+        legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
     )
     return fig

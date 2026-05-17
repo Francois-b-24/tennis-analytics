@@ -26,8 +26,11 @@ from components.plotly_theme import (
 from components.widgets import (
     circuit_filter_sql,
     circuit_selectbox,
+    df_styled,
     inject_global_css,
-    page_info,
+    kpi_row,
+    page_header,
+    section,
 )
 from db.duckdb_session import create_connection
 
@@ -137,18 +140,36 @@ def _duration_distribution(_root: str, circuit: str) -> pd.DataFrame:
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 circuit = circuit_selectbox(key="ins_circuit")
 
-st.title("Insights")
-page_info(
-    "Tendances long-terme sur 15 ans de tennis professionnel : "
-    "évolution du nombre d'aces et de double-fautes, durée des matchs dans le temps, "
-    "comparaison des circuits ATP et WTA, et distribution des durées par surface."
+page_header(
+    "Insights",
+    subtitle=(
+        "Tendances long-terme : évolution des aces / doubles-fautes, durée des matchs, "
+        "comparaison ATP vs WTA et distribution par surface."
+    ),
+    icon="💡",
 )
 st.caption("Données ATP/WTA 2010–2026.")
 
-# ── Section A — Aces et double-fautes ────────────────────────────────────────
-st.subheader("Aces et double-fautes par match (par année)")
+# ── KPIs synthèse globale ─────────────────────────────────────────────────────
+with st.spinner("Calcul des indicateurs…"):
+    aces_df = _aces_df_by_year(str(_ROOT), circuit)
+    dur_df = _duration_by_year(str(_ROOT), circuit)
 
-aces_df = _aces_df_by_year(str(_ROOT), circuit)
+_avg_aces = float(aces_df["aces_par_match"].mean()) if not aces_df.empty else 0.0
+_avg_df = float(aces_df["df_par_match"].mean()) if not aces_df.empty else 0.0
+_avg_dur = float(dur_df["duree_moy"].mean()) if not dur_df.empty else 0.0
+_n_matches = int(aces_df["nb_matchs"].sum()) if not aces_df.empty else 0
+kpi_row(
+    [
+        {"label": "Matchs analysés", "value": f"{_n_matches:,}".replace(",", " "), "icon": "🎾"},
+        {"label": "Aces / match (moy.)", "value": f"{_avg_aces:.1f}", "icon": "💥"},
+        {"label": "Double-fautes / match", "value": f"{_avg_df:.1f}", "icon": "❌"},
+        {"label": "Durée moyenne", "value": f"{int(_avg_dur)} min", "icon": "⏱️"},
+    ]
+)
+
+# ── Section A — Aces et double-fautes ────────────────────────────────────────
+section("Aces et double-fautes par match (par année)", level=3, divider_before=True)
 
 if not aces_df.empty:
     fig_aces = go.Figure()
@@ -183,12 +204,8 @@ if not aces_df.empty:
 else:
     st.info("Données indisponibles pour les aces.")
 
-st.divider()
-
 # ── Section B — Durée des matchs ─────────────────────────────────────────────
-st.subheader("Durée des matchs par année")
-
-dur_df = _duration_by_year(str(_ROOT), circuit)
+section("Durée des matchs par année", level=3, divider_before=True)
 
 if not dur_df.empty and dur_df["duree_moy"].notna().any():
     fig_dur = go.Figure()
@@ -223,12 +240,11 @@ if not dur_df.empty and dur_df["duree_moy"].notna().any():
 else:
     st.info("Données de durée indisponibles.")
 
-st.divider()
-
 # ── Section C — Comparaison ATP vs WTA ───────────────────────────────────────
-st.subheader("Comparaison ATP vs WTA")
+section("Comparaison ATP vs WTA", level=3, divider_before=True)
 
-cmp_df = _atp_wta_comparison(str(_ROOT))
+with st.spinner("Calcul comparaison ATP/WTA…"):
+    cmp_df = _atp_wta_comparison(str(_ROOT))
 
 if not cmp_df.empty:
     fig_cmp = make_subplots(
@@ -274,10 +290,8 @@ if not cmp_df.empty:
 else:
     st.info("Données de comparaison ATP/WTA indisponibles.")
 
-st.divider()
-
 # ── Section D — Distribution de la durée par surface ─────────────────────────
-st.subheader("Distribution de la durée des matchs par surface")
+section("Distribution de la durée des matchs par surface", level=3, divider_before=True)
 
 dist_df = _duration_distribution(str(_ROOT), circuit)
 
@@ -310,12 +324,10 @@ else:
 
 
 # ── Section E — Records de séries de victoires consécutives ──────────────────
-st.divider()
-st.subheader("Records — plus longues séries de victoires consécutives")
-page_info(
-    "Algorithme classique de *gaps and islands* SQL : pour chaque joueur, on identifie "
-    "les sous-séquences de victoires consécutives et on extrait les plus longues. "
-    "Inclut tous les matchs ATP/WTA officiels depuis 2010."
+section("Records — plus longues séries de victoires consécutives", level=3, divider_before=True)
+st.caption(
+    "Algorithme *gaps and islands* SQL : pour chaque joueur, sous-séquences de victoires "
+    "consécutives, les plus longues sont extraites (tous matchs ATP/WTA officiels depuis 2010)."
 )
 
 
@@ -401,7 +413,13 @@ if not streaks_df.empty:
 
     col1, col2 = st.columns([1, 1])
     with col1:
-        st.dataframe(streaks_display, use_container_width=True, hide_index=True)
+        df_styled(
+            streaks_display,
+            column_config={
+                "Rang": st.column_config.NumberColumn(format="#%d"),
+                "Série": st.column_config.NumberColumn(format="%d"),
+            },
+        )
     with col2:
         fig_streaks = go.Figure(
             go.Bar(

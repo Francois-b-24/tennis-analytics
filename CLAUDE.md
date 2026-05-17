@@ -58,6 +58,8 @@ Le **runtime app ne lit pas pandas directement** : il passe par des vues DuckDB 
 - **Chemins** : `pathlib` + `ROOT_PATH` (cf. `.env.example`), jamais de chemins absolus codés en dur.
 - **Cache Streamlit** : `@st.cache_data` pour lectures DuckDB et agrégations, `@st.cache_resource` pour la connexion DuckDB.
 - **Bootstrap pages** : chaque page Streamlit appelle `init_app(__file__)` depuis `app/components/_bootstrap.py` (gère `sys.path`, `.env`, connexion DuckDB cachée). Ne pas dupliquer le bloc d'init.
+- **Composants UI obligatoires** : utiliser `page_header()` (pas `st.title` + `page_info`), `kpi_row()` (pas `st.columns` + `st.metric` recopiés), `section()` (pas `st.subheader` brut), `df_styled()` (pas `st.dataframe` direct — auto-détecte les `column_config` Elo / dates / pourcentages). Tous exposés depuis `app/components/widgets.py`.
+- **Requêtes SQL partagées** : centraliser dans `app/components/queries.py` (`player_options`, `tournaments_for_circuit`, `latest_match_per_circuit`). Ne jamais redéfinir `_player_options` dans une page.
 - **Selectbox circuit unifié** : utiliser `circuit_selectbox()` de `app/components/widgets.py` (constante `CIRCUITS = ("Tous", "ATP", "WTA")`). Toute concaténation SQL passe par `circuit_filter_sql()` qui valide via allowlist.
 - **Tests** : toute fonction de calcul métier (Elo, features, pipeline) doit avoir une couverture pytest.
 

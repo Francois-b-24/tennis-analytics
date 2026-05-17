@@ -17,7 +17,10 @@ from components.widgets import (
     circuit_selectbox,
     format_date_dd_mm_yyyy,
     inject_global_css,
+    kpi_row,
+    page_header,
     safe_scalar,
+    section,
 )
 
 st.set_page_config(
@@ -51,20 +54,13 @@ circuit = circuit_selectbox(key="home_circuit")
 cf = circuit_filter_sql(circuit)
 
 # ── Hero ──────────────────────────────────────────────────────────────────────
-st.markdown(
-    """
-    <h1 style='margin-bottom:0'>🎾 Tennis Analytics</h1>
-    <p style='color:#666;font-size:1.1rem;margin-top:4px'>
-        Plateforme personnelle d'analyse ATP/WTA — statistiques, ratings Elo et prédictions ML
-    </p>
-    """,
-    unsafe_allow_html=True,
+page_header(
+    "Tennis Analytics",
+    subtitle="Plateforme personnelle d'analyse ATP/WTA — statistiques, ratings Elo et prédictions ML.",
+    icon="🎾",
 )
-st.divider()
 
-# ── KPIs row 1 ────────────────────────────────────────────────────────────────
-col1, col2, col3 = st.columns(3)
-
+# ── KPIs : volume des données ─────────────────────────────────────────────────
 total_matches = int(
     safe_scalar(connection, f"SELECT COUNT(*) FROM v_matches WHERE 1=1 {cf}", default=0) or 0
 )
@@ -93,16 +89,6 @@ total_tournois = int(
     )
     or 0
 )
-
-with col1:
-    st.metric("Matchs indexés", f"{total_matches:,}".replace(",", " "))
-with col2:
-    st.metric("Joueurs", f"{total_players:,}".replace(",", " "))
-with col3:
-    st.metric("Tournois couverts", f"{total_tournois:,}".replace(",", " "))
-
-# ── KPIs row 2 ────────────────────────────────────────────────────────────────
-col4, col5, col6 = st.columns(3)
 
 date_range = connection.execute(
     "SELECT MIN(tourney_date), MAX(tourney_date) FROM v_matches"
@@ -134,70 +120,36 @@ last_atp_date = format_date_dd_mm_yyyy(last_atp[1]) if last_atp else ""
 last_wta_name = last_wta[0] if last_wta else "—"
 last_wta_date = format_date_dd_mm_yyyy(last_wta[1]) if last_wta else ""
 
-with col4:
-    st.metric("Periode couverte", f"{min_date} → {max_date}")
-with col5:
-    st.metric("Dernier tournoi ATP", last_atp_name, delta=last_atp_date, delta_color="off")
-with col6:
-    st.metric("Dernier tournoi WTA", last_wta_name, delta=last_wta_date, delta_color="off")
+kpi_row(
+    [
+        {"label": "Matchs indexés", "value": f"{total_matches:,}".replace(",", " "), "icon": "🎾"},
+        {"label": "Joueurs", "value": f"{total_players:,}".replace(",", " "), "icon": "👤"},
+        {"label": "Tournois", "value": f"{total_tournois:,}".replace(",", " "), "icon": "🏆"},
+    ]
+)
 
-st.divider()
+st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+
+kpi_row(
+    [
+        {"label": "Période couverte", "value": f"{min_date} → {max_date}", "icon": "📅"},
+        {
+            "label": "Dernier tournoi ATP",
+            "value": last_atp_name,
+            "delta": last_atp_date,
+            "icon": "🟦",
+        },
+        {
+            "label": "Dernier tournoi WTA",
+            "value": last_wta_name,
+            "delta": last_wta_date,
+            "icon": "🟪",
+        },
+    ]
+)
 
 st.markdown(
     """
-    <style>
-    .elo-tooltip {
-        position: relative;
-        display: inline-block;
-        color: #3A7D44;
-        font-weight: 600;
-        border-bottom: 1px dashed #3A7D44;
-        cursor: help;
-    }
-    .elo-tooltip .elo-tip {
-        visibility: hidden;
-        opacity: 0;
-        width: 300px;
-        background: #1e2d24;
-        color: #f0f7f2;
-        font-size: 0.82rem;
-        line-height: 1.6;
-        border-radius: 8px;
-        padding: 12px 14px;
-        position: absolute;
-        bottom: calc(100% + 8px);
-        left: 50%;
-        transform: translateX(-50%);
-        box-shadow: 0 4px 20px rgba(0,0,0,0.25);
-        transition: opacity 0.2s ease;
-        z-index: 9999;
-        pointer-events: none;
-    }
-    .elo-tooltip .elo-tip::after {
-        content: "";
-        position: absolute;
-        top: 100%;
-        left: 50%;
-        transform: translateX(-50%);
-        border: 6px solid transparent;
-        border-top-color: #1e2d24;
-    }
-    .elo-tooltip:hover .elo-tip {
-        visibility: visible;
-        opacity: 1;
-    }
-    .info-band {
-        background: linear-gradient(135deg, #f4f9f5 0%, #eaf3ec 100%);
-        border-left: 4px solid #3A7D44;
-        border-radius: 0 8px 8px 0;
-        padding: 12px 16px;
-        margin-bottom: 16px;
-        color: #3a3a3a;
-        font-size: 0.92rem;
-        line-height: 1.6;
-    }
-    </style>
-
     <div class="info-band">
     🎾&nbsp; Bienvenue sur cette plateforme d'analyse tennis personnelle.
     Explorez les statistiques de carrière des joueurs ATP et WTA depuis 2010,
@@ -219,7 +171,7 @@ st.markdown(
 )
 
 # ── Navigation cards ───────────────────────────────────────────────────────────
-st.markdown("### Explorer l'application")
+section("Explorer l'application", level=3, divider_before=True)
 
 PAGES = [
     {

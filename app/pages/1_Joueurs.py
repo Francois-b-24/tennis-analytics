@@ -25,13 +25,17 @@ from components.plotly_theme import (
     TENNIS_LINE,
     apply_tennis_theme,
 )
+from components.queries import player_options
 from components.widgets import (
     circuit_selectbox,
+    df_styled,
     disambiguate_player_labels,
     format_date_dd_mm_yyyy,
     format_elo,
     inject_global_css,
-    page_info,
+    kpi_row,
+    page_header,
+    section,
 )
 from db.duckdb_session import create_connection
 
@@ -42,31 +46,6 @@ inject_global_css()
 @st.cache_resource(show_spinner=False)
 def _connection() -> duckdb.DuckDBPyConnection:
     return create_connection(_ROOT)
-
-
-@st.cache_data(show_spinner=False)
-def _player_options(_root: str, circuit: str) -> pd.DataFrame:
-    """Liste dédupliquée des joueurs d'un circuit avec leur code pays IOC."""
-    conn = _connection()
-    cols = conn.execute("DESCRIBE v_players").df()["column_name"].tolist()
-    pays_col = "ioc" if "ioc" in cols else ("country_code" if "country_code" in cols else "NULL")
-    sql = f"""
-        SELECT player_id,
-               TRIM(CONCAT(COALESCE(ANY_VALUE(name_first), ''),
-                           ' ',
-                           COALESCE(ANY_VALUE(name_last), ''))) AS full_name,
-               ANY_VALUE({pays_col}) AS ioc
-        FROM v_players
-        WHERE circuit = ?
-        GROUP BY player_id
-        HAVING TRIM(CONCAT(COALESCE(ANY_VALUE(name_first), ''),
-                           ' ',
-                           COALESCE(ANY_VALUE(name_last), ''))) <> ''
-    """
-    try:
-        return conn.execute(sql, [circuit]).df()
-    except duckdb.Error:
-        return pd.DataFrame(columns=["player_id", "full_name", "ioc"])
 
 
 @st.cache_data(show_spinner=False)
@@ -190,21 +169,29 @@ def _recent_matches(_root: str, player_id: int) -> pd.DataFrame:
 circuit = circuit_selectbox(key="joueurs_circuit", include_all=False, default="ATP")
 
 # ── Titre ─────────────────────────────────────────────────────────────────────
-st.title("Joueurs")
-page_info(
-    "Sélectionnez un joueur pour afficher sa fiche complète : ratings Elo actuels par surface, "
-    "bilan victoires/défaites sur toute sa carrière, performances par type de terrain "
-    "et évolution de son niveau dans le temps."
+page_header(
+    "Joueurs",
+    subtitle=(
+        "Fiche complète : ratings Elo par surface, bilan carrière, performances par "
+        "type de terrain et évolution dans le temps."
+    ),
+    icon="👤",
 )
 
-players = _player_options(str(_ROOT), circuit)
+players = player_options(str(_ROOT), circuit)
 if players.empty:
     st.warning("Aucun joueur disponible. Lancez l'ingestion pour construire les parquets.")
     st.stop()
 
 players = disambiguate_player_labels(players)
 mapping = dict(zip(players["label"], players["player_id"], strict=False))
-selected_label = st.selectbox("Sélectionner un joueur", list(mapping.keys()), key="joueurs_player")
+selected_label = st.selectbox(
+    "Sélectionner un joueur",
+    list(mapping.keys()),
+    key="joueurs_player",
+    help="💡 Tapez pour rechercher",
+    placeholder="Rechercher un joueur…",
+)
 player_id = int(mapping[selected_label])
 # Conserve le nom propre (sans IOC) pour les titres et affichages
 selected_name = players.loc[players["player_id"] == player_id, "full_name"].iloc[0]
@@ -218,35 +205,31 @@ if identity.empty:
 
 row = identity.iloc[0]
 
-col_bio, col_elo = st.columns([2, 1])
+dob_raw = row.get("dob")
+dob_str = (
+    format_date_dd_mm_yyyy(int(dob_raw))
+    if dob_raw and str(dob_raw) not in ("nan", "None", "")
+    else "—"
+)
+country = row.get("pays") or "—"
+st.markdown(
+    f"### {selected_name}\n"
+    f"**Nationalité :** {country} &nbsp;|&nbsp; **Naissance :** {dob_str} "
+    f"&nbsp;|&nbsp; **Circuit :** {circuit}"
+)
 
-with col_bio:
-    dob_raw = row.get("dob")
-    dob_str = (
-        format_date_dd_mm_yyyy(int(dob_raw))
-        if dob_raw and str(dob_raw) not in ("nan", "None", "")
-        else "—"
-    )
-    country = row.get("pays") or "—"
-    st.markdown(f"## {selected_name}")
-    st.markdown(
-        f"**Nationalité :** {country} &nbsp;|&nbsp; **Naissance :** {dob_str} &nbsp;|&nbsp; **Circuit :** {circuit}"
-    )
-
-with col_elo:
-    st.markdown("#### Ratings Elo actuels")
-    e1, e2 = st.columns(2)
-    with e1:
-        st.metric("Global", format_elo(row.get("elo_global")))
-        st.metric("Dur", format_elo(row.get("elo_hard")))
-    with e2:
-        st.metric("Terre", format_elo(row.get("elo_clay")))
-        st.metric("Gazon", format_elo(row.get("elo_grass")))
-
-st.divider()
+section("Ratings Elo actuels", level=4)
+kpi_row(
+    [
+        {"label": "Global", "value": format_elo(row.get("elo_global")), "icon": "📊"},
+        {"label": "Dur", "value": format_elo(row.get("elo_hard")), "icon": "🟦"},
+        {"label": "Terre", "value": format_elo(row.get("elo_clay")), "icon": "🟧"},
+        {"label": "Gazon", "value": format_elo(row.get("elo_grass")), "icon": "🟩"},
+    ]
+)
 
 # ── Section B — Stats carrière ────────────────────────────────────────────────
-st.subheader("Statistiques carrière")
+section("Statistiques carrière", level=3, divider_before=True)
 
 career = _career_stats(str(_ROOT), player_id)
 
@@ -272,15 +255,27 @@ if not career.empty:
     avg_dur = _safe_float(r["avg_duration"])
     tournaments = _safe_int(r["tournaments"])
 
-    mc1, mc2, mc3, mc4 = st.columns(4)
-    with mc1:
-        st.metric("Bilan", f"{wins}V / {total - wins}D", f"{win_pct:.1f} %")
-    with mc2:
-        st.metric("Tournois joués", str(tournaments))
-    with mc3:
-        st.metric("Aces / match (moy.)", f"{avg_aces:.1f}" if avg_aces is not None else "—")
-    with mc4:
-        st.metric("Durée moy. (min)", f"{int(avg_dur)}" if avg_dur is not None else "—")
+    kpi_row(
+        [
+            {
+                "label": "Bilan",
+                "value": f"{wins}V / {total - wins}D",
+                "delta": f"{win_pct:.1f} %",
+                "icon": "🎾",
+            },
+            {"label": "Tournois joués", "value": str(tournaments), "icon": "🏆"},
+            {
+                "label": "Aces / match",
+                "value": f"{avg_aces:.1f}" if avg_aces is not None else "—",
+                "icon": "💥",
+            },
+            {
+                "label": "Durée moy. (min)",
+                "value": f"{int(avg_dur)}" if avg_dur is not None else "—",
+                "icon": "⏱️",
+            },
+        ]
+    )
 
 # Stats par surface
 surface_df = _surface_stats(str(_ROOT), player_id)
@@ -310,10 +305,8 @@ if not surface_df.empty:
     apply_tennis_theme(fig_surf)
     st.plotly_chart(fig_surf, use_container_width=True)
 
-st.divider()
-
 # ── Section C — Évolution Elo ─────────────────────────────────────────────────
-st.subheader("Évolution du rating Elo")
+section("Évolution du rating Elo", level=3, divider_before=True)
 
 elo_hist = _elo_history(str(_ROOT), player_id)
 
@@ -348,12 +341,11 @@ if not elo_hist.empty and "date" in elo_hist.columns:
 else:
     st.info("Historique Elo indisponible. Relancez `uv run python -m transformation.build_elo`.")
 
-st.divider()
-
 # ── Section D — Derniers matchs ───────────────────────────────────────────────
-st.subheader("20 derniers matchs")
+section("20 derniers matchs", level=3, divider_before=True)
 
-recent = _recent_matches(str(_ROOT), player_id)
+with st.spinner("Chargement de l'historique…"):
+    recent = _recent_matches(str(_ROOT), player_id)
 
 if recent.empty:
     st.info("Aucun match disponible pour ce joueur.")
@@ -371,10 +363,8 @@ else:
             "minutes": "Durée (min)",
         }
     )
-    st.dataframe(
+    df_styled(
         display[
             ["Date", "Tournoi", "Surface", "Tour", "Résultat", "Adversaire", "Score", "Durée (min)"]
-        ],
-        use_container_width=True,
-        hide_index=True,
+        ]
     )

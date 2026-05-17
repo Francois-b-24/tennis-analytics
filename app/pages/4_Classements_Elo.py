@@ -22,7 +22,14 @@ from components.plotly_theme import (
     TENNIS_LINE,
     apply_tennis_theme,
 )
-from components.widgets import circuit_selectbox, format_elo, inject_global_css, page_info
+from components.widgets import (
+    circuit_selectbox,
+    df_styled,
+    format_elo,
+    inject_global_css,
+    page_header,
+    section,
+)
 from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Classements Elo — Tennis Analytics", layout="wide")
@@ -87,11 +94,13 @@ surface_choice = st.sidebar.selectbox(
 surface_col = SURFACE_MAP[surface_choice]
 surface_color = SURFACE_COLORS[surface_choice]
 
-st.title("Classements Elo")
-page_info(
-    "Classement des joueurs selon leur rating Elo — un indicateur de niveau calculé match après match, "
-    "plus précis que le classement officiel car il tient compte de la force des adversaires. "
-    "Filtrez par surface pour voir qui domine vraiment sur dur, terre battue ou gazon."
+page_header(
+    "Classements Elo",
+    subtitle=(
+        "Classement par rating Elo — un indicateur calculé match après match, plus précis "
+        "que le classement officiel car il tient compte de la force des adversaires."
+    ),
+    icon="📊",
 )
 st.caption(
     f"Ratings calculés sur {top_n} joueurs {circuit} — surface de référence : **{surface_choice}**"
@@ -140,32 +149,32 @@ if df.empty:
     st.stop()
 
 # ── Section A — Tableau ───────────────────────────────────────────────────────
-st.subheader(f"Top {top_n} — {circuit} ({surface_choice})")
+section(f"Top {top_n} — {circuit} ({surface_choice})", level=3)
 
-display_df = df.copy()
-for col in ["elo_global", "elo_hard", "elo_clay", "elo_grass"]:
-    display_df[col] = display_df[col].apply(lambda v: format_elo(v) if pd.notna(v) else "—")
-
-st.dataframe(
-    display_df.rename(
-        columns={
-            "rang": "Rang",
-            "joueur": "Joueur",
-            "elo_global": "Global",
-            "elo_hard": "Dur",
-            "elo_clay": "Terre",
-            "elo_grass": "Gazon",
-            "last_match_date": "Dernier match",
-        }
-    ),
-    use_container_width=True,
-    hide_index=True,
+display_df = df.rename(
+    columns={
+        "rang": "Rang",
+        "joueur": "Joueur",
+        "elo_global": "Global",
+        "elo_hard": "Dur",
+        "elo_clay": "Terre",
+        "elo_grass": "Gazon",
+        "last_match_date": "Dernier match",
+    }
+)
+df_styled(
+    display_df,
+    column_config={
+        "Rang": st.column_config.NumberColumn(format="#%d"),
+        "Global": st.column_config.NumberColumn(format="%d"),
+        "Dur": st.column_config.NumberColumn(format="%d"),
+        "Terre": st.column_config.NumberColumn(format="%d"),
+        "Gazon": st.column_config.NumberColumn(format="%d"),
+    },
 )
 
-st.divider()
-
 # ── Section B — Bar chart Top N ───────────────────────────────────────────────
-st.subheader(f"Visualisation Top {min(top_n, 30)}")
+section(f"Visualisation Top {min(top_n, 30)}", level=3, divider_before=True)
 
 chart_df = df.head(30).sort_values(surface_col, ascending=True)
 
@@ -190,15 +199,15 @@ fig_bar.update_layout(
 apply_tennis_theme(fig_bar)
 st.plotly_chart(fig_bar, use_container_width=True)
 
-st.divider()
-
 # ── Section C — Comparaison multi-surface pour un joueur ─────────────────────
-st.subheader("Comparaison 4 surfaces pour un joueur")
+section("Comparaison 4 surfaces pour un joueur", level=3, divider_before=True)
 
 player_choice = st.selectbox(
     "Sélectionner un joueur",
     df["joueur"].tolist(),
     key="elo_player_compare",
+    help="💡 Tapez pour rechercher",
+    placeholder="Rechercher un joueur…",
 )
 
 player_row = df[df["joueur"] == player_choice].iloc[0]
