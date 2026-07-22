@@ -93,6 +93,7 @@ Le **runtime app ne lit pas pandas directement** : il passe par des vues DuckDB 
 - Workflow `daily_ingest.yml` actif (cron 04:00 UTC) : **commit direct sur `main`** des nouveaux parquets (plus de PR à merger). Un contrôle de non-régression refuse toute chute > 10 % du volume de `matches`/`players`.
 - Workflow `healthcheck.yml` (toutes les 6 h) : ping l'app (variable de dépôt `APP_URL`) pour empêcher la mise en veille Streamlit Cloud, et ouvre/referme une issue `indisponibilite` automatiquement.
 - **L'app déployée est privée** : sa racine renvoie un `303` vers l'authentification Streamlit alors qu'elle fonctionne normalement. Pour juger de sa santé, sonder `/healthz` (répond `200`) — ne jamais conclure à une panne sur la base du code retour de la racine.
+- Workflow `keepalive.yml` (lundi 05:00 UTC) : GitHub désactive les crons après ~60 jours sans activité sur le dépôt, silencieusement. Il réarme ce compteur et ouvre une issue `cron-arrete` si l'ingestion est muette depuis > 48 h. `daily_ingest` ouvre de même une issue `ingestion-echec` en cas de panne. Ces deux issues se referment automatiquement au retour à la normale.
 - Les parquets de `data/processed/` sont **volontairement versionnés** (~21 Mo total) pour Streamlit Cloud. Surveiller : la CI échoue si un parquet dépasse `MAX_PARQUET_BYTES` (défaut 100 Mo).
 
 ## Vérifier un changement de bout en bout
@@ -113,3 +114,9 @@ Chaque page est atteignable par son nom sans le préfixe numérique
 ## Notes environnement
 
 Si le projet est sous `~/Desktop` ou autre dossier sync iCloud, les opérations git/mmap peuvent échouer avec `Operation canceled`. Dans ce cas : `brctl download .` pour forcer le téléchargement local, ou déplacer le projet hors iCloud (`~/dev/`, `~/Code/`).
+
+Autres symptômes iCloud observés sur ce dépôt — **toujours vérifier `git status` avant de commiter** :
+
+- **Doublons de conflit** (`CLAUDE 2.md`, `sackmann_loader (1).py`) apparaissant en masse. Un `.github/workflows/daily_ingest 2.yml` non repéré serait exécuté par GitHub comme un second workflow actif. Nettoyage : supprimer ces fichiers, ils n'ont jamais de contenu utile.
+- **Suppressions fantômes** : `git status` affiche tout le dépôt en `D` alors que les fichiers sont sur disque. Cause : un `.git/index.lock` orphelin d'un process git tué. Vérifier qu'aucun git ne tourne, supprimer le lock, puis `git reset`.
+- **Fichiers évincés** : `data/raw/*.csv` peut afficher une taille alors que `du -sh` renvoie 0 B (placeholders). Le pipeline échoue alors localement — lancer l'ingestion via GitHub Actions plutôt que `brctl download` sur ~50 fichiers.
