@@ -10,6 +10,8 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # Permet d'ouvrir une issue si l'ingestion échoue (cf. dernière étape).
+  issues: write
 
 concurrency:
   group: daily-ingest
@@ -131,3 +133,66 @@ jobs:
           git pull --rebase origin main
           git push origin HEAD:main
           echo "Données mises à jour sur main."
+
+      # Sans cette alerte, une ingestion cassée resterait silencieuse : les données
+      # se figeraient et il faudrait s'en apercevoir soi-même.
+      - name: Signaler l'échec de l'ingestion
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const ouvertes = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: "ingestion-echec",
+            });
+            // Une seule issue ouverte à la fois : pas de spam quotidien.
+            if (ouvertes.data.length > 0) {
+              console.log("Issue d'échec déjà ouverte, rien à faire.");
+              return;
+            }
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: "🔴 Échec de l'ingestion quotidienne",
+              labels: ["ingestion-echec"],
+              body: [
+                "L'ingestion automatique a échoué : les données ne sont plus à jour.",
+                "",
+                `- Run : ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                "",
+                "**Causes fréquentes :**",
+                "- Source Sackmann indisponible ou schéma CSV modifié",
+                "- Contrôle de non-régression déclenché (chute > 10 % du volume)",
+                "- Permissions Actions repassées en lecture seule",
+                "",
+                "_Cette issue se referme automatiquement à la prochaine ingestion réussie._",
+              ].join("\n"),
+            });
+
+      - name: Refermer l'issue d'échec après un succès
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const ouvertes = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: "ingestion-echec",
+            });
+            for (const issue of ouvertes.data) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: "✅ Ingestion de nouveau fonctionnelle — clôture automatique.",
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: "closed",
+              });
+            }
