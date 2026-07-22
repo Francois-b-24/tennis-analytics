@@ -65,8 +65,6 @@ ignore = ["BLE001", "C408", "E501", "RUF001"]
 "app/pages/**/*.py" = ["E402"]
 "tests/**/*.py" = ["S101"]
 "src/tennis_analytics/modeling/win_probability.py" = ["N803", "N806"]
-# RUF046 : `round()` sur des np.float64 renvoie un float — le `int()` est utile.
-"app/pages/5_Predictions.py" = ["E402", "RUF046"]
 
 [tool.black]
 line-length = 100

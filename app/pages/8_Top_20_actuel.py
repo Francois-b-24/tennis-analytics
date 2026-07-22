@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from components._bootstrap import data_key, init_app
 
-_ROOT, _ = init_app(__file__)
+_ROOT, _CONNECTION = init_app(__file__)
 _DATA_KEY = data_key(_ROOT)
 
 import duckdb
@@ -33,15 +33,14 @@ from components.widgets import (
     page_header,
     section,
 )
-from tennis_analytics.db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Top 20 actuel — Tennis Analytics", layout="wide")
 inject_global_css()
 
 
-@st.cache_resource(show_spinner=False)
 def _connection() -> duckdb.DuckDBPyConnection:
-    return create_connection(_ROOT)
+    """Retourne la connexion partagée (cache invalidé si les parquets changent)."""
+    return _CONNECTION
 
 
 def _country_column_name(conn: duckdb.DuckDBPyConnection) -> str:

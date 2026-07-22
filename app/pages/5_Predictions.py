@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from components._bootstrap import data_key, init_app
 
-_ROOT, _ = init_app(__file__)
+_ROOT, _CONNECTION = init_app(__file__)
 _DATA_KEY = data_key(_ROOT)
 
 import duckdb
@@ -35,7 +35,6 @@ from components.widgets import (
     player_selectbox,
     section,
 )
-from tennis_analytics.db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Prédictions — Tennis Analytics", layout="wide")
 inject_global_css()
@@ -47,9 +46,9 @@ SURFACE_NORM = {"Dur": "hard", "Terre battue": "clay", "Gazon": "grass"}
 SURFACE_LABEL = {"Dur": "🔵 Dur", "Terre battue": "🟠 Terre battue", "Gazon": "🟢 Gazon"}
 
 
-@st.cache_resource(show_spinner=False)
 def _connection() -> duckdb.DuckDBPyConnection:
-    return create_connection(_ROOT)
+    """Retourne la connexion partagée (cache invalidé si les parquets changent)."""
+    return _CONNECTION
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -266,8 +265,8 @@ with ca:
     st.markdown(f"##### {name_a}")
     kpi_row(
         [
-            {"label": "Elo global", "value": f"{int(round(ea_glob))}", "icon": "📊"},
-            {"label": f"Elo {surface_choice}", "value": f"{int(round(ea_surf))}", "icon": "🎯"},
+            {"label": "Elo global", "value": f"{round(ea_glob)}", "icon": "📊"},
+            {"label": f"Elo {surface_choice}", "value": f"{round(ea_surf)}", "icon": "🎯"},
             {"label": "% vict. surface", "value": f"{wr_a*100:.0f} %", "icon": "🏆"},
             {"label": "Forme (10)", "value": f"{form_a*100:.0f} %", "icon": "📈"},
         ]
@@ -277,8 +276,8 @@ with cb:
     st.markdown(f"##### {name_b}")
     kpi_row(
         [
-            {"label": "Elo global", "value": f"{int(round(eb_glob))}", "icon": "📊"},
-            {"label": f"Elo {surface_choice}", "value": f"{int(round(eb_surf))}", "icon": "🎯"},
+            {"label": "Elo global", "value": f"{round(eb_glob)}", "icon": "📊"},
+            {"label": f"Elo {surface_choice}", "value": f"{round(eb_surf)}", "icon": "🎯"},
             {"label": "% vict. surface", "value": f"{wr_b*100:.0f} %", "icon": "🏆"},
             {"label": "Forme (10)", "value": f"{form_b*100:.0f} %", "icon": "📈"},
         ]
