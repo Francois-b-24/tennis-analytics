@@ -35,14 +35,24 @@ jobs:
             exit 1
           fi
 
-          echo "Cible : $APP_URL"
+          # On interroge /healthz plutôt que la racine : si l'app est privée,
+          # la racine renvoie un 303 vers l'authentification Streamlit alors que
+          # l'app tourne parfaitement. /healthz répond 200 dans les deux cas et
+          # reflète réellement l'état du conteneur.
+          base="${APP_URL%/}"
+          sante="$base/healthz"
+          echo "Cible : $sante"
+
           statut=""
           # 3 tentatives espacées : un réveil de conteneur Streamlit peut être lent.
           for tentative in 1 2 3; do
-            statut=$(curl -sS -L --max-time 90 -o /dev/null -w "%{http_code}" "$APP_URL" || echo "000")
+            statut=$(curl -sS --max-time 90 -o /dev/null -w "%{http_code}" "$sante" || echo "000")
             echo "Tentative $tentative : HTTP $statut"
             if [ "$statut" = "200" ]; then
               echo "app_ok=true" >> "$GITHUB_OUTPUT"
+              # Visite de la racine pour le keep-alive (le code retour importe peu :
+              # un 303 d'authentification suffit à marquer l'app comme active).
+              curl -sS --max-time 90 -o /dev/null "$base" || true
               exit 0
             fi
             sleep 30
