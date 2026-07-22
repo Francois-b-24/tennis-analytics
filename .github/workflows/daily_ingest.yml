@@ -41,7 +41,7 @@ jobs:
 
       - name: Vérifier l'environnement
         run: |
-          python -c "from ingestion.sackmann_loader import run_ingestion_pipeline; print('OK')"
+          python -c "from tennis_analytics.ingestion.sackmann_loader import run_ingestion_pipeline; print('OK')"
 
       - name: Télécharger, valider et matérialiser
         env:
@@ -52,8 +52,8 @@ jobs:
         env:
           ROOT_PATH: ${{ github.workspace }}
         run: |
-          python -m transformation.build_elo
-          python -m transformation.build_model
+          python -m tennis_analytics.transformation.build_elo
+          python -m tennis_analytics.transformation.build_model
 
       - name: Vérifier la taille des parquets
         env:
