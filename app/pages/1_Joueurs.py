@@ -339,7 +339,10 @@ if not elo_hist.empty and "date" in elo_hist.columns:
     apply_tennis_theme(fig_elo)
     st.plotly_chart(fig_elo, use_container_width=True)
 else:
-    st.info("Historique Elo indisponible. Relancez `uv run python -m transformation.build_elo`.")
+    st.info(
+        f"Aucun historique Elo pour {selected_name} — ce joueur n'a pas de match "
+        "classé sur la période couverte (2010+)."
+    )
 
 # ── Section D — Derniers matchs ───────────────────────────────────────────────
 section("20 derniers matchs", level=3, divider_before=True)

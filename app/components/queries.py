@@ -31,12 +31,18 @@ def player_options(_conn_key: str, circuit: str) -> pd.DataFrame:
     Fusion de l'ancien `_player_options` (1_Joueurs) et `_player_options_circuit`
     (2_Face_a_Face). `circuit` peut valoir 'ATP', 'WTA' ou 'Tous'.
 
+    **Seuls les joueurs ayant réellement disputé un match sont proposés.** Le
+    fichier joueurs de Sackmann contient ~122 800 entrées (juniors, qualifiés,
+    homonymes) contre ~3 500 ayant joué depuis 2010 : sans ce filtre, 97 % des
+    noms de la liste n'ont ni statistiques ni historique Elo, et la page affiche
+    « Historique Elo indisponible » dès l'ouverture.
+
     Args:
         _conn_key: Clé `data_key()` (racine + empreinte des données).
         circuit: 'ATP', 'WTA' ou 'Tous'.
 
     Returns:
-        DataFrame avec colonnes `player_id`, `full_name`, `ioc`.
+        DataFrame avec colonnes `player_id`, `full_name`, `ioc`, trié par nom.
     """
     conn = _shared_connection(_conn_key)
     try:
@@ -44,22 +50,35 @@ def player_options(_conn_key: str, circuit: str) -> pd.DataFrame:
     except duckdb.Error:
         return pd.DataFrame(columns=["player_id", "full_name", "ioc"])
     pays_col = "ioc" if "ioc" in cols else ("country_code" if "country_code" in cols else "NULL")
-    where_circuit = "" if circuit == "Tous" else "WHERE circuit = ?"
+    where_circuit = "" if circuit == "Tous" else "WHERE p.circuit = ?"
+    # Le filtre par circuit s'applique aussi aux matchs : un joueur « BOTH » ne
+    # doit pas remonter dans la liste ATP s'il n'a joué que sur le circuit WTA.
+    where_matchs = "" if circuit == "Tous" else "WHERE circuit = ?"
     sql = f"""
-        SELECT player_id,
-               TRIM(CONCAT(COALESCE(ANY_VALUE(name_first), ''),
+        WITH joueurs_actifs AS (
+            SELECT DISTINCT player_id FROM (
+                SELECT winner_id AS player_id, circuit FROM v_matches
+                UNION ALL
+                SELECT loser_id AS player_id, circuit FROM v_matches
+            ) {where_matchs}
+        )
+        SELECT p.player_id,
+               TRIM(CONCAT(COALESCE(ANY_VALUE(p.name_first), ''),
                            ' ',
-                           COALESCE(ANY_VALUE(name_last), ''))) AS full_name,
+                           COALESCE(ANY_VALUE(p.name_last), ''))) AS full_name,
                ANY_VALUE({pays_col}) AS ioc
-        FROM v_players
+        FROM v_players p
+        JOIN joueurs_actifs a ON p.player_id = a.player_id
         {where_circuit}
-        GROUP BY player_id
-        HAVING TRIM(CONCAT(COALESCE(ANY_VALUE(name_first), ''),
+        GROUP BY p.player_id
+        HAVING TRIM(CONCAT(COALESCE(ANY_VALUE(p.name_first), ''),
                            ' ',
-                           COALESCE(ANY_VALUE(name_last), ''))) <> ''
+                           COALESCE(ANY_VALUE(p.name_last), ''))) <> ''
+        ORDER BY full_name
     """
     try:
-        params = [] if circuit == "Tous" else [circuit]
+        # Deux placeholders quand un circuit est choisi : filtre matchs + filtre joueurs.
+        params = [] if circuit == "Tous" else [circuit, circuit]
         return conn.execute(sql, params).df()
     except duckdb.Error:
         return pd.DataFrame(columns=["player_id", "full_name", "ioc"])

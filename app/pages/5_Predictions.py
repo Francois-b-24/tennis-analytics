@@ -181,7 +181,7 @@ bundle = load_model_bundle(MODEL_PATH)
 if bundle is None:
     st.error(
         "Modèle non disponible. Lancez d'abord :\n\n"
-        "```bash\nPYTHONPATH=src uv run python -m transformation.build_model\n```"
+        "```bash\nuv run python -m tennis_analytics.transformation.build_model\n```"
     )
     st.stop()
 

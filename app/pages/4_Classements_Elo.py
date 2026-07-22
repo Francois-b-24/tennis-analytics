@@ -144,7 +144,8 @@ df = _top_elo(_DATA_KEY, circuit, surface_col, top_n)
 
 if df.empty:
     st.warning(
-        "Aucune donnée Elo disponible. " "Lancez `uv run python -m transformation.build_elo`."
+        "Aucune donnée Elo disponible. "
+        "Lancez `uv run python -m tennis_analytics.transformation.build_elo`."
     )
     st.stop()
 

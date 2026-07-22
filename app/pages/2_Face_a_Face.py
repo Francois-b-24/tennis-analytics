@@ -198,10 +198,7 @@ def _favorite_message(
     elo_a = _elo_row(_DATA_KEY, player_a)
     elo_b = _elo_row(_DATA_KEY, player_b)
     if elo_a.empty or elo_b.empty:
-        return (
-            "Elo indisponible : recalculez les ratings "
-            "(`uv run python -m transformation.build_elo`)."
-        )
+        return "Elo indisponible : l'un des deux joueurs n'a pas de rating sur la période couverte."
 
     surf_col = {
         "Dur": "elo_hard",
