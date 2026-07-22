@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from ratings.elo import EloEngine, adaptive_k, compute_elo_from_matches
+from tennis_analytics.ratings.elo import EloEngine, adaptive_k, compute_elo_from_matches
 
 
 def test_adaptive_k_steps() -> None:
@@ -35,7 +35,7 @@ def test_bo5_increases_update_magnitude() -> None:
 def test_inactivity_decay_function() -> None:
     from datetime import datetime, timedelta
 
-    from ratings.elo import _apply_inactivity_decay
+    from tennis_analytics.ratings.elo import _apply_inactivity_decay
 
     last_played = datetime(2010, 1, 1)
     today = last_played + timedelta(days=400)

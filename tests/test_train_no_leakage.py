@@ -11,7 +11,7 @@ import pytest
 def test_train_and_persist_raises_on_small_data(tmp_path: Path) -> None:
     """Avec des données insuffisantes, le pipeline ML doit lever ValueError
     (et NON pas retomber sur un train_test_split aléatoire qui causerait du leakage)."""
-    from modeling.win_probability import train_and_persist
+    from tennis_analytics.modeling.win_probability import train_and_persist
 
     processed = tmp_path / "data" / "processed"
     processed.mkdir(parents=True)

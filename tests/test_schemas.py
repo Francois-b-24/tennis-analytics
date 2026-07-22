@@ -6,7 +6,7 @@ import pandas as pd
 import pandera as pa
 import pytest
 
-from ingestion.schemas import MatchesSchema, PlayersSchema, RankingsSchema
+from tennis_analytics.ingestion.schemas import MatchesSchema, PlayersSchema, RankingsSchema
 
 
 def test_matches_schema_accepts_valid_row() -> None:

@@ -8,8 +8,11 @@ from __future__ import annotations
 
 from loguru import logger
 
-from ingestion.sackmann_loader import get_project_root, materialize_interim_from_raw
-from transformation.pipeline import build_processed_tables
+from tennis_analytics.ingestion.sackmann_loader import (
+    get_project_root,
+    materialize_interim_from_raw,
+)
+from tennis_analytics.transformation.pipeline import build_processed_tables
 
 
 def main() -> None:

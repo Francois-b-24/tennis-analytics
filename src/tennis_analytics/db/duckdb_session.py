@@ -10,11 +10,20 @@ from loguru import logger
 
 
 def get_project_root() -> Path:
-    """Retourne la racine du projet depuis `ROOT_PATH` ou la découverte locale."""
+    """Retourne la racine du projet depuis `ROOT_PATH` ou la découverte locale.
+
+    La découverte remonte jusqu'au premier ancêtre contenant `pyproject.toml`
+    (plutôt qu'un nombre de niveaux figé, qui casse au moindre déplacement de
+    module dans l'arborescence du package).
+    """
     env = os.getenv("ROOT_PATH")
     if env:
         return Path(env).expanduser().resolve()
-    return Path(__file__).resolve().parents[2]
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pyproject.toml").exists():
+            return parent
+    return here.parents[3]
 
 
 def _processed_dir(root: Path) -> Path:

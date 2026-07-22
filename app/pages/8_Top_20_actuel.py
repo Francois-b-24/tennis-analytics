@@ -6,9 +6,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from components._bootstrap import init_app
+from components._bootstrap import data_key, init_app
 
 _ROOT, _ = init_app(__file__)
+_DATA_KEY = data_key(_ROOT)
 
 import duckdb
 import pandas as pd
@@ -32,7 +33,7 @@ from components.widgets import (
     page_header,
     section,
 )
-from db.duckdb_session import create_connection
+from tennis_analytics.db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Top 20 actuel — Tennis Analytics", layout="wide")
 inject_global_css()
@@ -53,7 +54,7 @@ def _country_column_name(conn: duckdb.DuckDBPyConnection) -> str:
     return "NULL"  # fallback : pas de pays
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _top20_per_circuit(_root: str, circuit: str) -> pd.DataFrame:
     """Top 20 joueurs d'un circuit selon Elo global, avec leurs ratings par surface."""
     conn = _connection()
@@ -88,7 +89,7 @@ def _top20_per_circuit(_root: str, circuit: str) -> pd.DataFrame:
     return conn.execute(sql, [circuit]).df()
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _player_career_stats(_root: str, player_id: int) -> pd.DataFrame:
     """Stats de carrière agrégées d'un joueur."""
     return (
@@ -116,7 +117,7 @@ def _player_career_stats(_root: str, player_id: int) -> pd.DataFrame:
     )
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _player_recent_form(_root: str, player_id: int) -> tuple[float, list[str]]:
     """Forme sur les 20 derniers matchs (% victoires + séquence V/D)."""
     df = (
@@ -140,7 +141,7 @@ def _player_recent_form(_root: str, player_id: int) -> tuple[float, list[str]]:
     return pct, seq
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _player_surface_winrate(_root: str, player_id: int) -> pd.DataFrame:
     """Taux de victoire par surface."""
     return (
@@ -167,7 +168,7 @@ def _player_surface_winrate(_root: str, player_id: int) -> pd.DataFrame:
     )
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _atp_vs_wta_top20_stats(_root: str) -> pd.DataFrame:
     """Stats agrégées comparées entre Top 20 ATP et Top 20 WTA."""
     return (
@@ -220,8 +221,8 @@ page_header(
 )
 
 # ── Données Top 20 ATP + WTA ─────────────────────────────────────────────────
-top_atp = _top20_per_circuit(str(_ROOT), "ATP")
-top_wta = _top20_per_circuit(str(_ROOT), "WTA")
+top_atp = _top20_per_circuit(_DATA_KEY, "ATP")
+top_wta = _top20_per_circuit(_DATA_KEY, "WTA")
 
 if top_atp.empty and top_wta.empty:
     st.error("Aucune donnée Elo disponible.")
@@ -298,9 +299,9 @@ row = df_top[df_top["player_id"] == pid].iloc[0]
 selected_name = str(row["joueur"])
 
 # Stats carrière
-career = _player_career_stats(str(_ROOT), pid)
-form_pct, form_seq = _player_recent_form(str(_ROOT), pid)
-surf_winrate = _player_surface_winrate(str(_ROOT), pid)
+career = _player_career_stats(_DATA_KEY, pid)
+form_pct, form_seq = _player_recent_form(_DATA_KEY, pid)
+surf_winrate = _player_surface_winrate(_DATA_KEY, pid)
 
 # Carte d'identité — métriques principales
 import math as _m
@@ -427,7 +428,7 @@ with col_c:
 section("Comparaison structurelle ATP vs WTA", level=3, divider_before=True)
 st.caption("Stats moyennes calculées sur tous les matchs joués par les Top 20 de chaque circuit.")
 
-cmp = _atp_vs_wta_top20_stats(str(_ROOT))
+cmp = _atp_vs_wta_top20_stats(_DATA_KEY)
 
 if cmp.empty or len(cmp) < 2:
     st.info("Données insuffisantes pour la comparaison.")

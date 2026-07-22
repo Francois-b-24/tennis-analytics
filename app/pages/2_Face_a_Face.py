@@ -6,9 +6,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from components._bootstrap import init_app
+from components._bootstrap import data_key, init_app
 
-_ROOT, _ = init_app(__file__)
+_ROOT, _CONNECTION = init_app(__file__)
+_DATA_KEY = data_key(_ROOT)
 
 import math
 
@@ -30,15 +31,14 @@ from components.widgets import (
     player_selectbox,
     section,
 )
-from db.duckdb_session import create_connection
 
 
-@st.cache_resource(show_spinner=False)
 def _connection() -> duckdb.DuckDBPyConnection:
-    return create_connection(_ROOT)
+    """Retourne la connexion partagée (cache invalidé si les parquets changent)."""
+    return _CONNECTION
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _h2h_matches(_root: str, player_a: int, player_b: int) -> pd.DataFrame:
     connection = _connection()
     sql = """
@@ -63,7 +63,7 @@ def _h2h_matches(_root: str, player_a: int, player_b: int) -> pd.DataFrame:
     return connection.execute(sql, [player_a, player_b, player_b, player_a]).df()
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _h2h_summary(_root: str, player_a: int, player_b: int) -> pd.DataFrame:
     connection = _connection()
     sql = """
@@ -80,7 +80,7 @@ def _h2h_summary(_root: str, player_a: int, player_b: int) -> pd.DataFrame:
     ).df()
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _h2h_surface(_root: str, player_a: int, player_b: int) -> pd.DataFrame:
     connection = _connection()
     sql = """
@@ -176,7 +176,7 @@ def _profile_from_matches(frame: pd.DataFrame, player_id: int) -> dict[str, floa
     }
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _elo_row(_root: str, player_id: int) -> pd.DataFrame:
     connection = _connection()
     try:
@@ -195,8 +195,8 @@ def _favorite_message(
     name_b: str,
     surface_choice: str,
 ) -> str:
-    elo_a = _elo_row(str(_ROOT), player_a)
-    elo_b = _elo_row(str(_ROOT), player_b)
+    elo_a = _elo_row(_DATA_KEY, player_a)
+    elo_b = _elo_row(_DATA_KEY, player_b)
     if elo_a.empty or elo_b.empty:
         return (
             "Elo indisponible : recalculez les ratings "
@@ -234,7 +234,7 @@ page_header(
 circuit = circuit_selectbox(key="h2h_circuit", default="ATP")
 
 connection = _connection()
-players = player_options(str(_ROOT), circuit)
+players = player_options(_DATA_KEY, circuit)
 if players.empty:
     st.warning("Aucun joueur disponible pour ce circuit.")
     st.stop()
@@ -262,7 +262,7 @@ name_b = players.loc[players["player_id"] == player_b, "full_name"].iloc[0]
 st.markdown(_favorite_message(player_a, player_b, name_a, name_b, surface_filter))
 
 with st.spinner("Calcul du H2H…"):
-    summary = _h2h_summary(str(_ROOT), player_a, player_b)
+    summary = _h2h_summary(_DATA_KEY, player_a, player_b)
 if not summary.empty:
 
     def _safe_int(v: object) -> int:
@@ -287,7 +287,7 @@ if not summary.empty:
             ]
         )
 
-surface_df = _h2h_surface(str(_ROOT), player_a, player_b)
+surface_df = _h2h_surface(_DATA_KEY, player_a, player_b)
 if not surface_df.empty:
     section("Bilan par surface", level=3)
     display = surface_df.rename(
@@ -365,7 +365,7 @@ if not surface_df.empty:
         )
 
 with st.spinner("Chargement de l'historique…"):
-    matches_df = _h2h_matches(str(_ROOT), player_a, player_b)
+    matches_df = _h2h_matches(_DATA_KEY, player_a, player_b)
 section("Historique des matchs", level=3, divider_before=True)
 if matches_df.empty:
     st.info("Pas de confrontations dans le jeu de données filtré.")

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from loguru import logger
 
-from ingestion.sackmann_loader import get_project_root
-from modeling.win_probability import train_and_persist
+from tennis_analytics.ingestion.sackmann_loader import get_project_root
+from tennis_analytics.modeling.win_probability import train_and_persist
 
 
 def main() -> None:

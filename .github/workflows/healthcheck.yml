@@ -1,0 +1,121 @@
+name: Disponibilité de l'app
+
+# Streamlit Community Cloud met les apps en veille après quelques jours sans
+# visite. Ce workflow visite l'app régulièrement (keep-alive) et ouvre une issue
+# si elle ne répond plus — l'app reste disponible sans intervention manuelle.
+
+on:
+  schedule:
+    # Toutes les 6 heures : suffisant pour empêcher la mise en veille,
+    # sans consommer inutilement de minutes Actions.
+    - cron: "0 */6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: healthcheck
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Pinger l'application
+        id: ping
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "::error::La variable de dépôt APP_URL n'est pas définie."
+            echo "Définir : Settings > Secrets and variables > Actions > Variables"
+            exit 1
+          fi
+
+          echo "Cible : $APP_URL"
+          statut=""
+          # 3 tentatives espacées : un réveil de conteneur Streamlit peut être lent.
+          for tentative in 1 2 3; do
+            statut=$(curl -sS -L --max-time 90 -o /dev/null -w "%{http_code}" "$APP_URL" || echo "000")
+            echo "Tentative $tentative : HTTP $statut"
+            if [ "$statut" = "200" ]; then
+              echo "app_ok=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 30
+          done
+
+          echo "app_ok=false" >> "$GITHUB_OUTPUT"
+          echo "statut=$statut" >> "$GITHUB_OUTPUT"
+          echo "::error::L'app ne répond pas (dernier statut HTTP : $statut)"
+          exit 1
+
+      - name: Signaler l'indisponibilité
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const titre = "🔴 Application indisponible";
+            const existantes = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: "indisponibilite",
+            });
+            // Une seule issue ouverte à la fois : on évite le spam quotidien.
+            if (existantes.data.length > 0) {
+              console.log("Issue d'indisponibilité déjà ouverte, rien à faire.");
+              return;
+            }
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: titre,
+              labels: ["indisponibilite"],
+              body: [
+                "Le healthcheck automatique n'a pas pu joindre l'application.",
+                "",
+                `- Run : ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                "",
+                "**À vérifier :**",
+                "- L'app est-elle en veille sur Streamlit Cloud ? (Manage app → Reboot)",
+                "- Les parquets `data/processed/` sont-ils bien présents ?",
+                "- La dernière ingestion quotidienne a-t-elle réussi ?",
+                "",
+                "_Cette issue se referme automatiquement au prochain healthcheck vert._",
+              ].join("\n"),
+            });
+
+  cloture:
+    # Referme l'issue d'indisponibilité dès que l'app répond de nouveau.
+    needs: ping
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refermer l'issue d'indisponibilité
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const ouvertes = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: "indisponibilite",
+            });
+            for (const issue of ouvertes.data) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: "✅ L'application répond de nouveau — clôture automatique.",
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: "closed",
+              });
+            }

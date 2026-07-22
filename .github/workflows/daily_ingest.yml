@@ -22,6 +22,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Nécessaire pour comparer aux parquets précédents et pousser sur main.
+          fetch-depth: 0
+          persist-credentials: true
 
       - name: Configurer Python 3.11
         uses: actions/setup-python@v5
@@ -70,24 +74,60 @@ jobs:
           print("Tailles OK")
           PY
 
-      - name: Créer une pull request
-        uses: peter-evans/create-pull-request@v7
-        with:
-          commit-message: "data: mise à jour automatique des parquets"
-          title: "data: mise à jour quotidienne des parquets"
-          body: |
-            Mise à jour automatique des jeux de données traités.
+      # Garde-fou : une ingestion partielle (réseau coupé, source amputée) ne doit
+      # jamais écraser des données saines. On refuse toute chute > 10 % du volume.
+      - name: Contrôle de non-régression du volume
+        run: |
+          python - <<'PY'
+          import subprocess
+          import sys
+          from pathlib import Path
 
-            - Déclenché par : `${{ github.workflow }}`
-            - Révision base : `${{ github.sha }}`
-            - Date : `${{ github.event.head_commit.timestamp }}`
+          import pandas as pd
 
-            **Checklist reviewer :**
-            - [ ] Volume des parquets cohérent (pas de chute brutale)
-            - [ ] CI verte sur la branche `data/update-*`
-            - [ ] Tests passent localement si modifs ML
-          branch: data/update-${{ github.run_id }}
-          delete-branch: true
-          add-paths: |
-            data/processed/*.parquet
-            data/processed/models/*.joblib
+          seuil = 0.90
+          erreurs = []
+          for nom in ("matches.parquet", "players.parquet"):
+              chemin = Path("data/processed") / nom
+              if not chemin.exists():
+                  erreurs.append(f"{nom} : absent après ingestion")
+                  continue
+              nouveau = len(pd.read_parquet(chemin))
+              # Version précédente telle que commitée sur main
+              try:
+                  blob = subprocess.run(
+                      ["git", "show", f"HEAD:data/processed/{nom}"],
+                      capture_output=True, check=True,
+                  ).stdout
+              except subprocess.CalledProcessError:
+                  print(f"{nom} : pas de version précédente, contrôle ignoré")
+                  continue
+              ancien_fichier = Path(f"/tmp/prev_{nom}")
+              ancien_fichier.write_bytes(blob)
+              ancien = len(pd.read_parquet(ancien_fichier))
+              print(f"{nom} : {ancien} -> {nouveau} lignes")
+              if ancien and nouveau < ancien * seuil:
+                  erreurs.append(
+                      f"{nom} : chute anormale {ancien} -> {nouveau} "
+                      f"(< {seuil:.0%}) — ingestion suspecte"
+                  )
+          if erreurs:
+              print("\n".join(erreurs))
+              sys.exit(1)
+          print("Volumes cohérents")
+          PY
+
+      - name: Commiter directement sur main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/processed/*.parquet data/processed/models/*.joblib
+          if git diff --cached --quiet; then
+            echo "Aucun changement de données — rien à commiter."
+            exit 0
+          fi
+          git commit -m "data: mise à jour automatique des parquets [skip ci]"
+          # Rebase avant push : évite l'échec si un commit est arrivé entre-temps.
+          git pull --rebase origin main
+          git push origin HEAD:main
+          echo "Données mises à jour sur main."

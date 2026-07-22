@@ -37,16 +37,20 @@ jobs:
         run: |
           python -c "
           import sys
-          sys.path.insert(0, 'src')
           sys.path.insert(0, 'app')
-          from db.duckdb_session import create_connection
+          from tennis_analytics.db.duckdb_session import create_connection
           from components.widgets import format_elo, country_flag, disambiguate_player_labels
           from components.plotly_theme import apply_tennis_theme
-          from ingestion.schemas import MatchesSchema, PlayersSchema, RankingsSchema
-          from modeling.win_probability import train_calibrated_model
-          from ratings.elo import EloEngine
+          from tennis_analytics.ingestion.schemas import MatchesSchema, PlayersSchema, RankingsSchema
+          from tennis_analytics.modeling.win_probability import train_calibrated_model
+          from tennis_analytics.ratings.elo import EloEngine
           print('Imports OK')
           "
+
+      - name: Vérifier que toutes les pages Streamlit compilent
+        run: |
+          python -m compileall -q app/
+          echo "Pages OK"
 
       - name: Lint (Ruff)
         run: ruff check src app tests

@@ -6,9 +6,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from components._bootstrap import init_app
+from components._bootstrap import data_key, init_app
 
-_ROOT, _ = init_app(__file__)
+_ROOT, _CONNECTION = init_app(__file__)
+_DATA_KEY = data_key(_ROOT)
 
 import duckdb
 import numpy as np
@@ -36,15 +37,14 @@ from components.widgets import (
     player_selectbox,
     section,
 )
-from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Profils & Styles — Tennis Analytics", layout="wide")
 inject_global_css()
 
 
-@st.cache_resource(show_spinner=False)
 def _connection() -> duckdb.DuckDBPyConnection:
-    return create_connection(_ROOT)
+    """Retourne la connexion partagée (cache invalidé si les parquets changent)."""
+    return _CONNECTION
 
 
 # Labels métier pour les clusters — assignés a posteriori en fonction du centroïde
@@ -59,7 +59,7 @@ CLUSTER_LABELS_TEMPLATE = {
 }
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _player_aggregates(_root: str, circuit: str, min_matches: int = 50) -> pd.DataFrame:
     """Agrège les statistiques de jeu par joueur (winner + loser unifiés).
 
@@ -146,7 +146,7 @@ def _player_aggregates(_root: str, circuit: str, min_matches: int = 50) -> pd.Da
         return pd.DataFrame()
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _versatility_index(_root: str, circuit: str, min_matches: int = 100) -> pd.DataFrame:
     """Calcule l'indice de polyvalence (low std => très polyvalent)."""
     cf = "WHERE p.circuit = ?" if circuit in ("ATP", "WTA") else ""
@@ -237,7 +237,7 @@ page_header(
 
 # ── Section A — Clustering KMeans ─────────────────────────────────────────────
 with st.spinner("Calcul des agrégats joueurs…"):
-    agg = _player_aggregates(str(_ROOT), circuit, min_matches=min_matches)
+    agg = _player_aggregates(_DATA_KEY, circuit, min_matches=min_matches)
 
 if agg.empty:
     st.warning(
@@ -410,7 +410,7 @@ st.caption(
 )
 
 with st.spinner("Calcul de l'indice de polyvalence…"):
-    vers = _versatility_index(str(_ROOT), circuit, min_matches=min_matches)
+    vers = _versatility_index(_DATA_KEY, circuit, min_matches=min_matches)
 
 if vers.empty:
     st.info("Données Elo par surface indisponibles.")

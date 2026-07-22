@@ -232,7 +232,7 @@ def evaluate_backtest(
         brier=float(brier_score_loss(y_test, proba)),
         log_loss=float(log_loss(y_test, proba)),
         accuracy=float(accuracy_score(y_test, preds)),
-        n_samples=int(len(y_test)),
+        n_samples=len(y_test),
     )
 
 
@@ -319,7 +319,7 @@ def train_and_persist(
             "log_loss": metrics.log_loss,
             "accuracy": metrics.accuracy,
             "n_test": metrics.n_samples,
-            "n_train": int(len(X_train)),
+            "n_train": len(X_train),
             "split_date": int(split_date),
         },
     }

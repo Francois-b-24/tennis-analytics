@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from transformation.pipeline import build_processed_tables
+from tennis_analytics.transformation.pipeline import build_processed_tables
 
 
 def test_build_processed_tables_writes_parquet(tmp_path: Path) -> None:

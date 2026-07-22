@@ -7,9 +7,10 @@ from pathlib import Path
 
 # Bootstrap commun : sys.path, .env, racine projet
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from components._bootstrap import init_app
+from components._bootstrap import data_key, init_app
 
 _ROOT, _ = init_app(__file__)
+_DATA_KEY = data_key(_ROOT)
 
 import math
 
@@ -37,7 +38,7 @@ from components.widgets import (
     page_header,
     section,
 )
-from db.duckdb_session import create_connection
+from tennis_analytics.db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Joueurs — Tennis Analytics", layout="wide")
 inject_global_css()
@@ -48,7 +49,7 @@ def _connection() -> duckdb.DuckDBPyConnection:
     return create_connection(_ROOT)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _identity(_root: str, player_id: int) -> pd.DataFrame:
     return (
         _connection()
@@ -67,7 +68,7 @@ def _identity(_root: str, player_id: int) -> pd.DataFrame:
     )
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _career_stats(_root: str, player_id: int) -> pd.DataFrame:
     return (
         _connection()
@@ -94,7 +95,7 @@ def _career_stats(_root: str, player_id: int) -> pd.DataFrame:
     )
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _surface_stats(_root: str, player_id: int) -> pd.DataFrame:
     return (
         _connection()
@@ -116,7 +117,7 @@ def _surface_stats(_root: str, player_id: int) -> pd.DataFrame:
     )
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _elo_history(_root: str, player_id: int) -> pd.DataFrame:
     try:
         df = (
@@ -139,7 +140,7 @@ def _elo_history(_root: str, player_id: int) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _recent_matches(_root: str, player_id: int) -> pd.DataFrame:
     return (
         _connection()
@@ -178,7 +179,7 @@ page_header(
     icon="👤",
 )
 
-players = player_options(str(_ROOT), circuit)
+players = player_options(_DATA_KEY, circuit)
 if players.empty:
     st.warning("Aucun joueur disponible. Lancez l'ingestion pour construire les parquets.")
     st.stop()
@@ -197,7 +198,7 @@ player_id = int(mapping[selected_label])
 selected_name = players.loc[players["player_id"] == player_id, "full_name"].iloc[0]
 
 # ── Section A — Carte d'identité ──────────────────────────────────────────────
-identity = _identity(str(_ROOT), player_id)
+identity = _identity(_DATA_KEY, player_id)
 
 if identity.empty:
     st.error("Données introuvables pour ce joueur.")
@@ -231,7 +232,7 @@ kpi_row(
 # ── Section B — Stats carrière ────────────────────────────────────────────────
 section("Statistiques carrière", level=3, divider_before=True)
 
-career = _career_stats(str(_ROOT), player_id)
+career = _career_stats(_DATA_KEY, player_id)
 
 if not career.empty:
     r = career.iloc[0]
@@ -278,7 +279,7 @@ if not career.empty:
     )
 
 # Stats par surface
-surface_df = _surface_stats(str(_ROOT), player_id)
+surface_df = _surface_stats(_DATA_KEY, player_id)
 
 if not surface_df.empty:
     st.markdown("##### Par surface")
@@ -308,7 +309,7 @@ if not surface_df.empty:
 # ── Section C — Évolution Elo ─────────────────────────────────────────────────
 section("Évolution du rating Elo", level=3, divider_before=True)
 
-elo_hist = _elo_history(str(_ROOT), player_id)
+elo_hist = _elo_history(_DATA_KEY, player_id)
 
 if not elo_hist.empty and "date" in elo_hist.columns:
     fig_elo = go.Figure()
@@ -345,7 +346,7 @@ else:
 section("20 derniers matchs", level=3, divider_before=True)
 
 with st.spinner("Chargement de l'historique…"):
-    recent = _recent_matches(str(_ROOT), player_id)
+    recent = _recent_matches(_DATA_KEY, player_id)
 
 if recent.empty:
     st.info("Aucun match disponible pour ce joueur.")

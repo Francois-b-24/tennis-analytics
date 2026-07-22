@@ -5,8 +5,8 @@ from __future__ import annotations
 import pandas as pd
 from loguru import logger
 
-from ingestion.sackmann_loader import get_project_root
-from ratings.elo import compute_elo_from_matches
+from tennis_analytics.ingestion.sackmann_loader import get_project_root
+from tennis_analytics.ratings.elo import compute_elo_from_matches
 
 
 def main() -> None:

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from transformation.pipeline import build_processed_tables
+from tennis_analytics.transformation.pipeline import build_processed_tables
 
 
 def test_match_uid_unique_after_pipeline(tmp_path: Path) -> None:

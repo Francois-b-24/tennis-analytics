@@ -14,7 +14,7 @@ from typing import Final
 import pandas as pd
 from loguru import logger
 
-from ingestion.schemas import MatchesSchema, PlayersSchema, RankingsSchema
+from tennis_analytics.ingestion.schemas import MatchesSchema, PlayersSchema, RankingsSchema
 
 RAW_GITHUB: Final[str] = "https://raw.githubusercontent.com"
 ATP_REPO: Final[str] = "JeffSackmann/tennis_atp/master"
@@ -37,13 +37,21 @@ class DownloadResult:
 def get_project_root() -> Path:
     """Retourne la racine du projet depuis `ROOT_PATH` ou la découverte locale.
 
+    La découverte remonte jusqu'au premier ancêtre contenant `pyproject.toml`
+    (plutôt qu'un nombre de niveaux figé, qui casse au moindre déplacement de
+    module dans l'arborescence du package).
+
     Returns:
         Chemin absolu vers la racine du dépôt.
     """
     env = os.getenv("ROOT_PATH")
     if env:
         return Path(env).expanduser().resolve()
-    return Path(__file__).resolve().parents[2]
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pyproject.toml").exists():
+            return parent
+    return here.parents[3]
 
 
 def _build_url(repo_path: str, filename: str) -> str:
@@ -315,7 +323,7 @@ def run_ingestion_pipeline(root: Path | None = None) -> None:
     download_players(raw_dir)
     materialize_interim_from_raw(raw_dir, interim_dir)
 
-    from transformation.pipeline import build_processed_tables
+    from tennis_analytics.transformation.pipeline import build_processed_tables
 
     build_processed_tables(project_root)
     logger.info("Ingestion terminée.")

@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from modeling.win_probability import (
+from tennis_analytics.modeling.win_probability import (
     assemble_training_frame,
     calibration_plot_data,
     evaluate_backtest,

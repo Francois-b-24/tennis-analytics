@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from ingestion.sackmann_loader import (
+from tennis_analytics.ingestion.sackmann_loader import (
     _read_csv_safe,
     csv_to_parquet_filtered_matches,
     csv_to_parquet_players,

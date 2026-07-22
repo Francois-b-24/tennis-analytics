@@ -20,22 +20,45 @@ L'application est déployée sur Streamlit Cloud : **https://tennisanalytics.str
 | Données | Parquet + vues DuckDB |
 | Pipeline | GitHub Actions (cron + PR données) |
 | ML | scikit-learn (LogisticRegression + calibration isotonique) |
-| Ratings | Elo implémenté maison (`src/ratings/elo.py`) |
+| Ratings | Elo implémenté maison (`src/tennis_analytics/ratings/elo.py`) |
 | Qualité | Ruff, Black, pytest + couverture |
 | Logs | loguru |
 | Validation | pandera (schémas critiques) |
 
 ## Architecture
 
+Structure inspirée de [cookiecutter-data-science](https://drivendata.github.io/cookiecutter-data-science/) :
+
 ```text
 data/raw          → CSV Sackmann (gitignored)
-data/interim      → Parquet typés post-validation
-data/processed    → Parquet consommés par DuckDB + modèles joblib
-src/ingestion     → Téléchargement et validation
-src/transformation→ Consolidation, Elo, entraînement modèle
-src/db            → Connexion DuckDB + vues `read_parquet`
+data/interim      → Parquet typés post-validation (gitignored)
+data/processed    → Parquet consommés par DuckDB + modèles joblib (versionnés)
+notebooks/        → Exploration (le code stabilisé migre vers src/)
+references/       → Dictionnaires de données, documentation des sources
+reports/figures/  → Analyses et figures exportées
+scripts/          → Utilitaires de maintenance (sync des dépendances)
+src/tennis_analytics/
+    ingestion/      → Téléchargement et validation (pandera)
+    transformation/ → Consolidation, Elo, entraînement modèle
+    ratings/        → Moteur Elo
+    modeling/       → Probabilité de victoire (split temporel)
+    db/             → Connexion DuckDB + vues `read_parquet`
 app/              → Streamlit (FR), thème Plotly centralisé
+tests/            → pytest
 ```
+
+## Automatisation
+
+L'application ne demande **aucune manipulation manuelle** :
+
+| Quoi | Comment | Fréquence |
+|---|---|---|
+| Mise à jour des données | `daily_ingest.yml` — ingestion puis commit direct sur `main` | 04:00 UTC |
+| Rafraîchissement de l'app | Empreinte des parquets (`data_fingerprint`) invalidant le cache | ≤ 5 min après un commit |
+| Disponibilité | `healthcheck.yml` — keep-alive + issue automatique si l'app tombe | toutes les 6 h |
+
+Le healthcheck requiert la variable de dépôt `APP_URL`
+(*Settings → Secrets and variables → Actions → Variables*).
 
 ## Prérequis
 
@@ -63,10 +86,10 @@ uv run tennis-ingest --skip-download --skip-build # ne fait que la matérialisat
 uv run tennis-ingest --root /chemin/autre         # racine projet alternative
 
 # Recalcul des Elo et contexte pré-match
-uv run python -m transformation.build_elo
+uv run python -m tennis_analytics.transformation.build_elo
 
 # Entraînement + export du modèle calibré
-uv run python -m transformation.build_model
+uv run python -m tennis_analytics.transformation.build_model
 
 # Application Streamlit
 uv run streamlit run app/Home.py

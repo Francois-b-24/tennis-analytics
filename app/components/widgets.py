@@ -445,7 +445,7 @@ def format_elo(value: float | None) -> str:
 
     if math.isnan(f):
         return "—"
-    return f"{int(round(f))}"
+    return f"{round(f)}"
 
 
 _ALLOWED_CIRCUITS = frozenset({"ATP", "WTA", "Tous", "TOUS", "all", "ALL", ""})

@@ -6,9 +6,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from components._bootstrap import init_app
+from components._bootstrap import data_key, init_app
 
-_ROOT, _ = init_app(__file__)
+_ROOT, _CONNECTION = init_app(__file__)
+_DATA_KEY = data_key(_ROOT)
 
 import duckdb
 import pandas as pd
@@ -31,7 +32,6 @@ from components.widgets import (
     page_header,
     section,
 )
-from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Tournois — Tennis Analytics", layout="wide")
 inject_global_css()
@@ -39,12 +39,12 @@ inject_global_css()
 SURF_COLORS = {"Hard": TENNIS_HARD, "Clay": TENNIS_CLAY, "Grass": TENNIS_GREEN}
 
 
-@st.cache_resource(show_spinner=False)
 def _connection() -> duckdb.DuckDBPyConnection:
-    return create_connection(_ROOT)
+    """Retourne la connexion partagée (cache invalidé si les parquets changent)."""
+    return _CONNECTION
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _palmares(_root: str, tourney: str, circuit: str) -> pd.DataFrame:
     return (
         _connection()
@@ -77,7 +77,7 @@ def _palmares(_root: str, tourney: str, circuit: str) -> pd.DataFrame:
     )
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _top_winners(_root: str, tourney: str, circuit: str) -> pd.DataFrame:
     return (
         _connection()
@@ -102,7 +102,7 @@ def _top_winners(_root: str, tourney: str, circuit: str) -> pd.DataFrame:
     )
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _duration_by_year(_root: str, tourney: str, circuit: str) -> pd.DataFrame:
     return (
         _connection()
@@ -124,7 +124,7 @@ def _duration_by_year(_root: str, tourney: str, circuit: str) -> pd.DataFrame:
     )
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _surface_breakdown(_root: str, tourney: str, circuit: str) -> pd.DataFrame:
     return (
         _connection()
@@ -159,7 +159,7 @@ page_header(
     icon="🏆",
 )
 
-tournois = tournaments_for_circuit(str(_ROOT), circuit)
+tournois = tournaments_for_circuit(_DATA_KEY, circuit)
 if not tournois:
     st.warning("Aucun tournoi disponible. Lancez l'ingestion pour construire les parquets.")
     st.stop()
@@ -175,7 +175,7 @@ tourney = st.selectbox(
 # ── Section A — Palmarès ──────────────────────────────────────────────────────
 section(f"Palmarès — {tourney} ({circuit})", level=3)
 
-palmares = _palmares(str(_ROOT), tourney, circuit)
+palmares = _palmares(_DATA_KEY, tourney, circuit)
 
 if palmares.empty:
     st.info("Aucune finale disponible pour ce tournoi dans les données.")
@@ -195,7 +195,7 @@ else:
     )
 
 # ── Section B — Top vainqueurs ────────────────────────────────────────────────
-top_w = _top_winners(str(_ROOT), tourney, circuit)
+top_w = _top_winners(_DATA_KEY, tourney, circuit)
 
 if not top_w.empty:
     section("Top vainqueurs", level=3, divider_before=True)
@@ -232,7 +232,7 @@ if not top_w.empty:
         )
 
 # ── Section C — Durée par année ───────────────────────────────────────────────
-dur_df = _duration_by_year(str(_ROOT), tourney, circuit)
+dur_df = _duration_by_year(_DATA_KEY, tourney, circuit)
 
 if not dur_df.empty and dur_df["duree_moy"].notna().any():
     section("Durée moyenne des matchs par année", level=3, divider_before=True)
@@ -257,7 +257,7 @@ if not dur_df.empty and dur_df["duree_moy"].notna().any():
     st.plotly_chart(fig_dur, use_container_width=True)
 
 # ── Section D — Répartition par surface ──────────────────────────────────────
-surf_df = _surface_breakdown(str(_ROOT), tourney, circuit)
+surf_df = _surface_breakdown(_DATA_KEY, tourney, circuit)
 
 if not surf_df.empty:
     section("Répartition par surface", level=3, divider_before=True)
@@ -305,7 +305,7 @@ ROUND_ORDER = {
 }
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _editions(_root: str, tourney: str, circuit: str) -> list[int]:
     """Liste des années où le tournoi a été disputé."""
     sql = """
@@ -321,7 +321,7 @@ def _editions(_root: str, tourney: str, circuit: str) -> list[int]:
         return []
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _edition_participants(_root: str, tourney: str, circuit: str, year: int) -> pd.DataFrame:
     """Liste des joueurs ayant disputé une édition donnée (W ou L)."""
     sql = """
@@ -350,7 +350,7 @@ def _edition_participants(_root: str, tourney: str, circuit: str, year: int) -> 
         return pd.DataFrame(columns=["player_id", "full_name"])
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _player_run(_root: str, tourney: str, circuit: str, year: int, player_id: int) -> pd.DataFrame:
     """Tous les matchs d'un joueur dans une édition, triés par round."""
     sql = """
@@ -385,14 +385,14 @@ def _player_run(_root: str, tourney: str, circuit: str, year: int, player_id: in
     return df.sort_values("round_order").reset_index(drop=True)
 
 
-editions = _editions(str(_ROOT), tourney, circuit)
+editions = _editions(_DATA_KEY, tourney, circuit)
 if not editions:
     st.info("Aucune édition disponible pour ce tournoi.")
 else:
     edcol, plcol = st.columns([1, 2])
     with edcol:
         year_choice = st.selectbox("Année", editions, key="tourn_run_year")
-    participants = _edition_participants(str(_ROOT), tourney, circuit, year_choice)
+    participants = _edition_participants(_DATA_KEY, tourney, circuit, year_choice)
     if participants.empty:
         st.info("Aucun participant trouvé pour cette édition.")
     else:
@@ -406,7 +406,7 @@ else:
                 placeholder="Rechercher un joueur…",
             )
         player_id = int(labels_map[player_label])
-        run = _player_run(str(_ROOT), tourney, circuit, year_choice, player_id)
+        run = _player_run(_DATA_KEY, tourney, circuit, year_choice, player_id)
 
         if run.empty:
             st.info(f"{player_label} n'a pas disputé cette édition.")

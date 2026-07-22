@@ -2,8 +2,9 @@
 
 Centralise les patterns dupliqués (listes joueurs, tournois, dernier match) pour
 éviter la dérive entre pages. Chaque fonction est cachée par `(_conn_key, ...)`
-où `_conn_key` est le `str(_ROOT)` issu de `init_app()` — c'est une clé stable
-réutilisable par `@st.cache_data`.
+où `_conn_key` est le `data_key()` issu de `init_app()` : racine du projet **et**
+empreinte des parquets. Dès que l'ingestion quotidienne réécrit les données,
+la clé change et les résultats cachés sont recalculés — sans redémarrage.
 
 Note : ce module est dans `app/components/` plutôt qu'`app/db/` pour éviter
 le conflit de namespace avec `src/db/duckdb_session` (déjà importé sous `db.*`).
@@ -15,15 +16,15 @@ import duckdb
 import pandas as pd
 import streamlit as st
 
-from components._bootstrap import _cached_connection
+from components._bootstrap import connection_for_key
 
 
-def _shared_connection(root_str: str) -> duckdb.DuckDBPyConnection:
+def _shared_connection(conn_key: str) -> duckdb.DuckDBPyConnection:
     """Connexion DuckDB partagée (réutilise le cache de :func:`init_app`)."""
-    return _cached_connection(root_str)
+    return connection_for_key(conn_key)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def player_options(_conn_key: str, circuit: str) -> pd.DataFrame:
     """Retourne les joueurs d'un circuit avec leur code pays IOC.
 
@@ -31,7 +32,7 @@ def player_options(_conn_key: str, circuit: str) -> pd.DataFrame:
     (2_Face_a_Face). `circuit` peut valoir 'ATP', 'WTA' ou 'Tous'.
 
     Args:
-        _conn_key: Racine projet (str) — clé de cache stable.
+        _conn_key: Clé `data_key()` (racine + empreinte des données).
         circuit: 'ATP', 'WTA' ou 'Tous'.
 
     Returns:
@@ -64,7 +65,7 @@ def player_options(_conn_key: str, circuit: str) -> pd.DataFrame:
         return pd.DataFrame(columns=["player_id", "full_name", "ioc"])
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def tournaments_for_circuit(_conn_key: str, circuit: str) -> list[str]:
     """Retourne la liste triée des tournois distincts pour un circuit donné."""
     conn = _shared_connection(_conn_key)
@@ -83,7 +84,7 @@ def tournaments_for_circuit(_conn_key: str, circuit: str) -> list[str]:
         return []
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def latest_match_per_circuit(_conn_key: str, circuit: str) -> dict:
     """Retourne le tournoi et la date du dernier match d'un circuit."""
     conn = _shared_connection(_conn_key)

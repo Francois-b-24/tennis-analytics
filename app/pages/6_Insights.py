@@ -6,9 +6,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from components._bootstrap import init_app
+from components._bootstrap import data_key, init_app
 
-_ROOT, _ = init_app(__file__)
+_ROOT, _CONNECTION = init_app(__file__)
+_DATA_KEY = data_key(_ROOT)
 
 import duckdb
 import pandas as pd
@@ -32,18 +33,17 @@ from components.widgets import (
     page_header,
     section,
 )
-from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Insights — Tennis Analytics", layout="wide")
 inject_global_css()
 
 
-@st.cache_resource(show_spinner=False)
 def _connection() -> duckdb.DuckDBPyConnection:
-    return create_connection(_ROOT)
+    """Retourne la connexion partagée (cache invalidé si les parquets changent)."""
+    return _CONNECTION
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _aces_df_by_year(_root: str, circuit: str) -> pd.DataFrame:
     cf = circuit_filter_sql(circuit)
     return (
@@ -67,7 +67,7 @@ def _aces_df_by_year(_root: str, circuit: str) -> pd.DataFrame:
     )
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _duration_by_year(_root: str, circuit: str) -> pd.DataFrame:
     cf = circuit_filter_sql(circuit)
     return (
@@ -94,7 +94,7 @@ def _duration_by_year(_root: str, circuit: str) -> pd.DataFrame:
     )
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _atp_wta_comparison(_root: str) -> pd.DataFrame:
     return (
         _connection()
@@ -117,7 +117,7 @@ def _atp_wta_comparison(_root: str) -> pd.DataFrame:
     )
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _duration_distribution(_root: str, circuit: str) -> pd.DataFrame:
     cf = circuit_filter_sql(circuit)
     return (
@@ -152,8 +152,8 @@ st.caption("Données ATP/WTA 2010–2026.")
 
 # ── KPIs synthèse globale ─────────────────────────────────────────────────────
 with st.spinner("Calcul des indicateurs…"):
-    aces_df = _aces_df_by_year(str(_ROOT), circuit)
-    dur_df = _duration_by_year(str(_ROOT), circuit)
+    aces_df = _aces_df_by_year(_DATA_KEY, circuit)
+    dur_df = _duration_by_year(_DATA_KEY, circuit)
 
 _avg_aces = float(aces_df["aces_par_match"].mean()) if not aces_df.empty else 0.0
 _avg_df = float(aces_df["df_par_match"].mean()) if not aces_df.empty else 0.0
@@ -244,7 +244,7 @@ else:
 section("Comparaison ATP vs WTA", level=3, divider_before=True)
 
 with st.spinner("Calcul comparaison ATP/WTA…"):
-    cmp_df = _atp_wta_comparison(str(_ROOT))
+    cmp_df = _atp_wta_comparison(_DATA_KEY)
 
 if not cmp_df.empty:
     fig_cmp = make_subplots(
@@ -293,7 +293,7 @@ else:
 # ── Section D — Distribution de la durée par surface ─────────────────────────
 section("Distribution de la durée des matchs par surface", level=3, divider_before=True)
 
-dist_df = _duration_distribution(str(_ROOT), circuit)
+dist_df = _duration_distribution(_DATA_KEY, circuit)
 
 if not dist_df.empty:
     SURF_COLORS = {"Hard": TENNIS_HARD, "Clay": TENNIS_CLAY, "Grass": TENNIS_GREEN}
@@ -331,7 +331,7 @@ st.caption(
 )
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _longest_win_streaks(_root: str, circuit: str, top_n: int = 15) -> pd.DataFrame:
     """Calcule les plus longues séries de victoires consécutives par joueur.
 
@@ -393,7 +393,7 @@ def _longest_win_streaks(_root: str, circuit: str, top_n: int = 15) -> pd.DataFr
         return pd.DataFrame()
 
 
-streaks_df = _longest_win_streaks(str(_ROOT), circuit, top_n=15)
+streaks_df = _longest_win_streaks(_DATA_KEY, circuit, top_n=15)
 
 if not streaks_df.empty:
     streaks_display = streaks_df.copy()

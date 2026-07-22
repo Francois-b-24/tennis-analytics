@@ -1,3 +1,15 @@
+# ⚠️  FICHIER GÉNÉRÉ — NE PAS ÉDITER À LA MAIN.
+#
+# Source de vérité : la section [project.dependencies] de pyproject.toml.
+# Ce fichier n'existe que pour Streamlit Community Cloud, qui installe via pip
+# et ne lit pas pyproject.toml.
+#
+# Régénérer après toute modification des dépendances :
+#     make deps
+#
+# L'application est installée en editable par Streamlit Cloud grâce à la
+# dernière ligne (`-e .`), ce qui rend le package `tennis_analytics` importable.
+
 duckdb==1.1.3
 joblib==1.4.2
 loguru==0.7.2
@@ -11,3 +23,6 @@ pydantic==2.9.2
 python-dotenv==1.0.1
 scikit-learn==1.5.2
 streamlit==1.40.1
+
+# Rend `tennis_analytics.*` importable depuis app/ sans bidouille de sys.path.
+-e .

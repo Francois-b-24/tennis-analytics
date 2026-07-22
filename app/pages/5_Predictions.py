@@ -7,9 +7,10 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from components._bootstrap import init_app
+from components._bootstrap import data_key, init_app
 
 _ROOT, _ = init_app(__file__)
+_DATA_KEY = data_key(_ROOT)
 
 import duckdb
 import numpy as np
@@ -34,7 +35,7 @@ from components.widgets import (
     player_selectbox,
     section,
 )
-from db.duckdb_session import create_connection
+from tennis_analytics.db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Prédictions — Tennis Analytics", layout="wide")
 inject_global_css()
@@ -51,7 +52,7 @@ def _connection() -> duckdb.DuckDBPyConnection:
     return create_connection(_ROOT)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _elo_row(_root: str, player_id: int) -> pd.DataFrame:
     try:
         return (
@@ -63,7 +64,7 @@ def _elo_row(_root: str, player_id: int) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _player_dob(_root: str, player_id: int) -> int | None:
     try:
         row = (
@@ -80,7 +81,7 @@ def _player_dob(_root: str, player_id: int) -> int | None:
     return None
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _h2h_ratio(_root: str, player_a: int, player_b: int) -> tuple[float, int, int, int]:
     """Retourne (ratio_a, wins_a, wins_b, total)."""
     try:
@@ -108,7 +109,7 @@ def _h2h_ratio(_root: str, player_a: int, player_b: int) -> tuple[float, int, in
     return 0.5, 0, 0, 0
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _surface_winrate(_root: str, player_id: int, surface_norm: str) -> float:
     try:
         row = (
@@ -133,7 +134,7 @@ def _surface_winrate(_root: str, player_id: int, surface_norm: str) -> float:
     return 0.5
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _recent_form(_root: str, player_id: int) -> float:
     try:
         df = (
@@ -188,7 +189,7 @@ if bundle is None:
 # ── Sélection joueurs ─────────────────────────────────────────────────────────
 connection = _connection()
 
-players = player_options(str(_ROOT), circuit)
+players = player_options(_DATA_KEY, circuit)
 if players.empty:
     players = load_player_options(connection)
 
@@ -220,8 +221,8 @@ name_b = players.loc[players["player_id"] == player_b, "full_name"].iloc[0]
 elo_col = SURFACE_ELO_COL[surface_choice]
 surf_norm = SURFACE_NORM[surface_choice]
 
-elo_a = _elo_row(str(_ROOT), player_a)
-elo_b = _elo_row(str(_ROOT), player_b)
+elo_a = _elo_row(_DATA_KEY, player_a)
+elo_b = _elo_row(_DATA_KEY, player_b)
 
 ea_surf = _get_elo(elo_a, elo_col)
 eb_surf = _get_elo(elo_b, elo_col)
@@ -229,16 +230,16 @@ ea_glob = _get_elo(elo_a, "elo_global")
 eb_glob = _get_elo(elo_b, "elo_global")
 
 current_year = datetime.now().year
-dob_a = _player_dob(str(_ROOT), player_a)
-dob_b = _player_dob(str(_ROOT), player_b)
+dob_a = _player_dob(_DATA_KEY, player_a)
+dob_b = _player_dob(_DATA_KEY, player_b)
 age_a = current_year - dob_a if dob_a else 27
 age_b = current_year - dob_b if dob_b else 27
 
-h2h_ratio, h2h_wins_a, h2h_wins_b, h2h_total = _h2h_ratio(str(_ROOT), player_a, player_b)
-wr_a = _surface_winrate(str(_ROOT), player_a, surf_norm)
-wr_b = _surface_winrate(str(_ROOT), player_b, surf_norm)
-form_a = _recent_form(str(_ROOT), player_a)
-form_b = _recent_form(str(_ROOT), player_b)
+h2h_ratio, h2h_wins_a, h2h_wins_b, h2h_total = _h2h_ratio(_DATA_KEY, player_a, player_b)
+wr_a = _surface_winrate(_DATA_KEY, player_a, surf_norm)
+wr_b = _surface_winrate(_DATA_KEY, player_b, surf_norm)
+form_a = _recent_form(_DATA_KEY, player_a)
+form_b = _recent_form(_DATA_KEY, player_b)
 
 features = {
     "diff_elo_surface": ea_surf - eb_surf,

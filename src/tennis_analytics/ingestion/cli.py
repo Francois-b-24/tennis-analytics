@@ -8,7 +8,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from ingestion.sackmann_loader import (
+from tennis_analytics.ingestion.sackmann_loader import (
     download_atp_wta_matches,
     download_players,
     download_rankings,
@@ -67,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
         materialize_interim_from_raw(raw_dir, interim_dir)
 
         if not args.skip_build:
-            from transformation.pipeline import build_processed_tables
+            from tennis_analytics.transformation.pipeline import build_processed_tables
 
             build_processed_tables(project_root)
         else:

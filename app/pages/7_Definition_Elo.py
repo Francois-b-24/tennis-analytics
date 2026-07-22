@@ -27,7 +27,7 @@ page_header(
     icon="📖",
 )
 
-PDF_PATH = _ROOT / "docs" / "elo_tennis_definition.pdf"
+PDF_PATH = _ROOT / "references" / "elo_tennis_definition.pdf"
 
 if PDF_PATH.exists():
     with PDF_PATH.open("rb") as f:

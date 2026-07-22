@@ -6,9 +6,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from components._bootstrap import init_app
+from components._bootstrap import data_key, init_app
 
-_ROOT, _ = init_app(__file__)
+_ROOT, _CONNECTION = init_app(__file__)
+_DATA_KEY = data_key(_ROOT)
 
 import duckdb
 import pandas as pd
@@ -30,7 +31,6 @@ from components.widgets import (
     page_header,
     section,
 )
-from db.duckdb_session import create_connection
 
 st.set_page_config(page_title="Classements Elo — Tennis Analytics", layout="wide")
 inject_global_css()
@@ -49,12 +49,12 @@ SURFACE_COLORS = {
 }
 
 
-@st.cache_resource(show_spinner=False)
 def _connection() -> duckdb.DuckDBPyConnection:
-    return create_connection(_ROOT)
+    """Retourne la connexion partagée (cache invalidé si les parquets changent)."""
+    return _CONNECTION
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def _top_elo(_root: str, circuit: str, surface_col: str, top_n: int) -> pd.DataFrame:
     # surface_col vient d'un dict Python hardcodé — pas de risque d'injection
     sql = f"""
@@ -140,7 +140,7 @@ with st.expander("ℹ️ Qu'est-ce que le rating Elo ?"):
         """
     )
 
-df = _top_elo(str(_ROOT), circuit, surface_col, top_n)
+df = _top_elo(_DATA_KEY, circuit, surface_col, top_n)
 
 if df.empty:
     st.warning(
