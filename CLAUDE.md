@@ -4,6 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commandes courantes
 
+Un `Makefile` enveloppe les tâches usuelles (`make help` pour la liste) :
+`make install`, `make app`, `make rebuild` (ingestion + Elo + modèle),
+`make check` (lint + tests avant commit), `make deps` (régénère
+`requirements.txt` depuis `pyproject.toml`). Les commandes brutes équivalentes :
+
 ```bash
 # Installation
 uv sync --all-extras
@@ -28,7 +33,21 @@ uv run pytest tests/test_elo.py::test_adaptive_k_steps -v   # un seul test
 uv run pytest --cov=src --cov-report=term-missing tests/    # couverture
 ```
 
-Le script `.venv/bin/tennis-ingest` requiert le package installé en editable (`pip install -e .[dev]`). Si `ModuleNotFoundError: No module named 'ingestion'`, lancer via `PYTHONPATH=src python -m tennis_analytics.ingestion.cli`.
+Le script `tennis-ingest` requiert le package installé en editable (`uv sync` ou `pip install -e .[dev]`). Si `ModuleNotFoundError: No module named 'tennis_analytics'`, lancer via `PYTHONPATH=src python -m tennis_analytics.ingestion.cli`.
+
+## Structure du dépôt
+
+Layout `src/` de type cookiecutter-data-science. **Tout le code métier vit dans le
+package unique `src/tennis_analytics/`** (`ingestion`, `transformation`, `ratings`,
+`modeling`, `db`, `analytics`) — les imports sont toujours qualifiés
+(`from tennis_analytics.ratings.elo import ...`).
+
+`app/` n'est **pas** un package installé : les pages Streamlit l'atteignent via le
+`sys.path.insert` en tête de fichier, suivi de `init_app(__file__)`. C'est la raison
+du `# ruff: E402` toléré sur `app/**` — les imports après le bootstrap sont voulus.
+
+`data/raw` et `data/interim` sont gitignorés ; **`data/processed` est versionné**
+(~22 Mo) car Streamlit Cloud n'exécute pas le pipeline.
 
 ## Architecture — flux de données
 
@@ -69,9 +88,27 @@ Le **runtime app ne lit pas pandas directement** : il passe par des vues DuckDB 
 
 - Commits : **Conventional Commits en français** (`feat: …`, `fix: …`, `chore: …`).
 - CI (`.github/workflows/ci.yml`) lance ruff + black + pytest avec `--cov-fail-under=40` sur Python 3.11. Si la CI fail sur le linter, fixer le code, **pas la config**.
+- **Valider avec les versions épinglées**, pas celles résolues localement : la CI installe `ruff==0.7.4` et `black==24.10.0`. Une règle plus récente ajoutée à `pyproject.toml` (ex. un ignore `RUF046`) fait échouer le *parsing* de la config sur 0.7.4 — pas seulement le lint. Contrôle avant push :
+  `uv run --isolated --with 'ruff==0.7.4' ruff check src app tests`
 - Workflow `daily_ingest.yml` actif (cron 04:00 UTC) : **commit direct sur `main`** des nouveaux parquets (plus de PR à merger). Un contrôle de non-régression refuse toute chute > 10 % du volume de `matches`/`players`.
 - Workflow `healthcheck.yml` (toutes les 6 h) : ping l'app (variable de dépôt `APP_URL`) pour empêcher la mise en veille Streamlit Cloud, et ouvre/referme une issue `indisponibilite` automatiquement.
+- **L'app déployée est privée** : sa racine renvoie un `303` vers l'authentification Streamlit alors qu'elle fonctionne normalement. Pour juger de sa santé, sonder `/healthz` (répond `200`) — ne jamais conclure à une panne sur la base du code retour de la racine.
 - Les parquets de `data/processed/` sont **volontairement versionnés** (~21 Mo total) pour Streamlit Cloud. Surveiller : la CI échoue si un parquet dépasse `MAX_PARQUET_BYTES` (défaut 100 Mo).
+
+## Vérifier un changement de bout en bout
+
+`pytest` ne charge aucune page Streamlit : une page peut être verte en test et
+casser au runtime. Pour valider réellement (ce qui suit reproduit Streamlit Cloud,
+qui installe via `pip install -r requirements.txt`, pas via `uv`) :
+
+```bash
+uv run python -m compileall -q app/          # syntaxe des 10 pages
+uv run streamlit run app/Home.py --server.port 8599 --server.headless true &
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8599/Joueurs
+```
+
+Chaque page est atteignable par son nom sans le préfixe numérique
+(`1_Joueurs.py` → `/Joueurs`, `9_Profils_et_Styles.py` → `/Profils_et_Styles`).
 
 ## Notes environnement
 
