@@ -16,10 +16,10 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
 
+# NB : scikit-learn (~2,7 s d'import) est chargé paresseusement dans la section
+# clustering — cf. plus bas. L'importer ici ralentirait l'ouverture de la page
+# même quand l'utilisateur ne déroule jamais jusqu'au KMeans.
 from components.plotly_theme import (
     TENNIS_CLAY,
     TENNIS_GREEN,
@@ -270,6 +270,11 @@ X = X.reset_index(drop=True)
 if len(X) < n_clusters + 1:
     st.warning("Pas assez de joueurs avec stats complètes pour effectuer le clustering.")
     st.stop()
+
+# Import paresseux : scikit-learn n'est chargé qu'ici, au moment du clustering.
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
