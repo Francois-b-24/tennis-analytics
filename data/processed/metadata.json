@@ -1,0 +1,23 @@
+{
+  "generated_at": "2026-11-17T18:15:17+00:00",
+  "last_match_date": {
+    "ATP": 20261117,
+    "WTA": 20261115
+  },
+  "matches_by_source": {
+    "sackmann": 90886,
+    "tennis-data": 2576,
+    "espn": 6
+  },
+  "provisional_matches": 6,
+  "archive_cutoff": {
+    "ATP": 20260525,
+    "WTA": 20260525
+  },
+  "new_players": [
+    "ATP A. Hernandez",
+    "ATP J. Hu",
+    "WTA S. Williams"
+  ],
+  "espn_error": null
+}

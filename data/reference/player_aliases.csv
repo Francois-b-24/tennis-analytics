@@ -1,0 +1,5 @@
+# Correspondances manuelles nom source -> identifiant (cf. tennis_analytics.ids).
+# À compléter quand une source écrit un prénom différent de Sackmann.
+circuit,source_name,player_id
+ATP,Barrios M.,144642
+WTA,Osorio M.,1215785

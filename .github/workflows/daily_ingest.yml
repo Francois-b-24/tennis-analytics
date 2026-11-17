@@ -128,6 +128,9 @@ jobs:
             echo "Aucun changement de données — rien à commiter."
             exit 0
           fi
+          # metadata.json change à chaque run (horodatage) : on ne le joint
+          # qu'aux vrais changements de données.
+          git add data/processed/metadata.json
           git commit -m "data: mise à jour automatique des parquets [skip ci]"
           # Rebase avant push : évite l'échec si un commit est arrivé entre-temps.
           git pull --rebase origin main
