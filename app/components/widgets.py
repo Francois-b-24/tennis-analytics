@@ -140,6 +140,23 @@ _IOC_TO_ISO2: dict[str, str] = {
     "AFG": "AF",
     "NZL": "NZ",
     "FIJ": "FJ",
+    "UZB": "UZ",
+    "MON": "MC",
+    "AND": "AD",
+    "ESA": "SV",
+    "BAR": "BB",
+    "TOG": "TG",
+    "TGO": "TG",
+    "LIB": "LB",
+    "BEN": "BJ",
+    "LIE": "LI",
+    "NAM": "NA",
+    "BDI": "BI",
+    "PRY": "PY",
+    "VAN": "VU",
+    "LVA": "LV",
+    "NMI": "MP",
+    "BER": "BM",
 }
 
 
