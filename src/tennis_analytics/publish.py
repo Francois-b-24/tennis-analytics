@@ -28,6 +28,8 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
+import pyarrow as pa
 import pyarrow.parquet as pq
 from loguru import logger
 
@@ -68,10 +70,22 @@ def _combined(entries: dict[str, dict[str, Any]], names: list[str]) -> str:
     return digest.hexdigest()
 
 
+def _library_versions() -> str:
+    """Versions qui conditionnent les artefacts (format parquet, modèle picklé)."""
+    import sklearn
+
+    return f"pandas={pd.__version__};pyarrow={pa.__version__};sklearn={sklearn.__version__}"
+
+
 def input_hash(processed: Path) -> str:
-    """Empreinte des tables d'ingestion seules."""
+    """Empreinte des tables d'ingestion **et** des versions de bibliothèques.
+
+    Une mise à jour de scikit-learn rend le modèle publié illisible ou
+    incohérent : elle doit forcer un recalcul même sans nouveau match.
+    """
     entries = {name: {"sha256": sha256_file(processed / name)} for name in INPUT_FILES}
-    return _combined(entries, list(INPUT_FILES))
+    entries["libraries"] = {"sha256": hashlib.sha256(_library_versions().encode()).hexdigest()}
+    return _combined(entries, [*INPUT_FILES, "libraries"])
 
 
 def build_manifest(processed: Path) -> dict[str, Any]:
