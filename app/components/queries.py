@@ -1,8 +1,8 @@
 """Requêtes SQL partagées entre les pages Streamlit.
 
 Centralise les patterns dupliqués (listes joueurs, tournois, dernier match) pour
-éviter la dérive entre pages. Chaque fonction est cachée par `(_conn_key, ...)`
-où `_conn_key` est le `data_key()` issu de `init_app()` : racine du projet **et**
+éviter la dérive entre pages. Chaque fonction est cachée par `(cache_key, ...)`
+où `cache_key` est le `data_key()` issu de `init_app()` : racine du projet **et**
 empreinte des parquets. Dès que l'ingestion quotidienne réécrit les données,
 la clé change et les résultats cachés sont recalculés — sans redémarrage.
 
@@ -25,7 +25,7 @@ def _shared_connection(conn_key: str) -> duckdb.DuckDBPyConnection:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def player_options(_conn_key: str, circuit: str) -> pd.DataFrame:
+def player_options(cache_key: str, circuit: str) -> pd.DataFrame:
     """Retourne les joueurs d'un circuit avec leur code pays IOC.
 
     Fusion de l'ancien `_player_options` (1_Joueurs) et `_player_options_circuit`
@@ -38,13 +38,13 @@ def player_options(_conn_key: str, circuit: str) -> pd.DataFrame:
     « Historique Elo indisponible » dès l'ouverture.
 
     Args:
-        _conn_key: Clé `data_key()` (racine + empreinte des données).
+        cache_key: Clé `data_key()` (racine + empreinte des données).
         circuit: 'ATP', 'WTA' ou 'Tous'.
 
     Returns:
         DataFrame avec colonnes `player_id`, `full_name`, `ioc`, trié par nom.
     """
-    conn = _shared_connection(_conn_key)
+    conn = _shared_connection(cache_key)
     try:
         cols = conn.execute("DESCRIBE v_players").df()["column_name"].tolist()
     except duckdb.Error:
@@ -85,9 +85,9 @@ def player_options(_conn_key: str, circuit: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def tournaments_for_circuit(_conn_key: str, circuit: str) -> list[str]:
+def tournaments_for_circuit(cache_key: str, circuit: str) -> list[str]:
     """Retourne la liste triée des tournois distincts pour un circuit donné."""
-    conn = _shared_connection(_conn_key)
+    conn = _shared_connection(cache_key)
     try:
         if circuit == "Tous":
             df = conn.execute(
@@ -104,9 +104,9 @@ def tournaments_for_circuit(_conn_key: str, circuit: str) -> list[str]:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def latest_match_per_circuit(_conn_key: str, circuit: str) -> dict:
+def latest_match_per_circuit(cache_key: str, circuit: str) -> dict:
     """Retourne le tournoi et la date du dernier match d'un circuit."""
-    conn = _shared_connection(_conn_key)
+    conn = _shared_connection(cache_key)
     try:
         row = conn.execute(
             """

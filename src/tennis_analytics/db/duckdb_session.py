@@ -71,26 +71,9 @@ def create_connection(project_root: Path | None = None) -> duckdb.DuckDBPyConnec
 
     players_path = processed / "players.parquet"
     if players_path.exists():
-        # On enregistre le parquet brut sous v_players_raw, puis on construit
-        # v_players qui expose les joueurs « BOTH » comme appartenant à la fois
-        # à ATP et WTA — pour que les requêtes WHERE circuit = 'ATP' / 'WTA'
-        # restent compatibles sans modification.
-        _register_parquet_view(connection, "v_players_raw", players_path)
-        connection.execute(
-            """
-            CREATE OR REPLACE VIEW v_players AS
-            SELECT player_id, name_first, name_last, hand, dob, ioc, height,
-                   wikidata_id,
-                   CASE WHEN circuit = 'BOTH' THEN 'ATP' ELSE circuit END AS circuit
-            FROM v_players_raw
-            UNION ALL
-            SELECT player_id, name_first, name_last, hand, dob, ioc, height,
-                   wikidata_id,
-                   'WTA' AS circuit
-            FROM v_players_raw
-            WHERE circuit = 'BOTH';
-            """
-        )
+        # Identifiants globalement uniques (WTA décalés, cf. tennis_analytics.ids) :
+        # chaque joueur appartient à un seul circuit, plus de cas « BOTH ».
+        _register_parquet_view(connection, "v_players", players_path)
         connection.execute(
             """
             CREATE OR REPLACE VIEW v_player_names AS
@@ -103,8 +86,3 @@ def create_connection(project_root: Path | None = None) -> duckdb.DuckDBPyConnec
         )
 
     return connection
-
-
-def get_readonly_connection(project_root: Path | None = None) -> duckdb.DuckDBPyConnection:
-    """Alias explicite pour une connexion en lecture seule (vues analytiques)."""
-    return create_connection(project_root)

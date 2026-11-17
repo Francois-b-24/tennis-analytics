@@ -850,9 +850,14 @@ def inject_global_css() -> None:
     )
 
 
-@st.cache_resource(show_spinner=False)
-def load_model_bundle(model_path: str) -> dict | None:
-    """Charge le bundle joblib {'model': ..., 'features': [...]}."""
+@st.cache_resource(ttl=3600, show_spinner=False)
+def load_model_bundle(model_path: str, cache_key: str = "") -> dict | None:
+    """Charge le bundle joblib {'model': ..., 'features': [...]}.
+
+    Args:
+        model_path: Chemin du fichier joblib.
+        cache_key: Clé `data_key()` : un nouveau modèle publié invalide le cache.
+    """
     import joblib
 
     p = Path(model_path)

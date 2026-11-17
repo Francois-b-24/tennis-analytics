@@ -39,7 +39,7 @@ def _connection() -> duckdb.DuckDBPyConnection:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _h2h_matches(_root: str, player_a: int, player_b: int) -> pd.DataFrame:
+def _h2h_matches(cache_key: str, player_a: int, player_b: int) -> pd.DataFrame:
     connection = _connection()
     sql = """
     SELECT
@@ -64,7 +64,7 @@ def _h2h_matches(_root: str, player_a: int, player_b: int) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _h2h_summary(_root: str, player_a: int, player_b: int) -> pd.DataFrame:
+def _h2h_summary(cache_key: str, player_a: int, player_b: int) -> pd.DataFrame:
     connection = _connection()
     sql = """
     SELECT
@@ -81,7 +81,7 @@ def _h2h_summary(_root: str, player_a: int, player_b: int) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _h2h_surface(_root: str, player_a: int, player_b: int) -> pd.DataFrame:
+def _h2h_surface(cache_key: str, player_a: int, player_b: int) -> pd.DataFrame:
     connection = _connection()
     sql = """
     SELECT
@@ -177,7 +177,7 @@ def _profile_from_matches(frame: pd.DataFrame, player_id: int) -> dict[str, floa
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _elo_row(_root: str, player_id: int) -> pd.DataFrame:
+def _elo_row(cache_key: str, player_id: int) -> pd.DataFrame:
     connection = _connection()
     try:
         return connection.execute(

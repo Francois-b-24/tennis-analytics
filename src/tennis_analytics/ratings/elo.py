@@ -9,6 +9,8 @@ from typing import Final, Literal
 
 import pandas as pd
 
+from tennis_analytics.transformation.ordering import sort_chronologically
+
 BASE_ELO: Final[float] = 1500.0
 INACTIVITY_DAYS: Final[int] = 180
 DECAY_LAMBDA: Final[float] = 0.05
@@ -218,9 +220,7 @@ def compute_elo_from_matches(
         les Elo **avant** chaque match pour le vainqueur et le perdant
         (global + surface du match).
     """
-    frame = matches.copy()
-    sort_cols = [c for c in ("tourney_date", "match_uid") if c in frame.columns]
-    frame = frame.sort_values(sort_cols or ["tourney_date"]).reset_index(drop=True)
+    frame = sort_chronologically(matches)
 
     engine = EloEngine()
     history_rows: list[dict[str, object]] = []
@@ -284,6 +284,13 @@ def compute_elo_from_matches(
         )
         return history, latest, match_context
 
-    last_rows = history.sort_values("tourney_date").groupby("player_id", as_index=False).tail(1)
-    latest = last_rows.rename(columns={"tourney_date": "last_match_date"})
+    # `history` est déjà dans l'ordre de traitement : la dernière ligne de chaque
+    # joueur est son état final. (Un `sort_values` non stable choisissait une
+    # ligne arbitraire parmi les matchs du même tournoi.)
+    last_rows = history.groupby("player_id", as_index=False).tail(1)
+    latest = (
+        last_rows.rename(columns={"tourney_date": "last_match_date"})
+        .sort_values("player_id", kind="mergesort")
+        .reset_index(drop=True)
+    )
     return history, latest, match_context

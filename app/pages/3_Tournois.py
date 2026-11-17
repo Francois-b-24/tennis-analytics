@@ -45,7 +45,7 @@ def _connection() -> duckdb.DuckDBPyConnection:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _palmares(_root: str, tourney: str, circuit: str) -> pd.DataFrame:
+def _palmares(cache_key: str, tourney: str, circuit: str) -> pd.DataFrame:
     return (
         _connection()
         .execute(
@@ -78,7 +78,7 @@ def _palmares(_root: str, tourney: str, circuit: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _top_winners(_root: str, tourney: str, circuit: str) -> pd.DataFrame:
+def _top_winners(cache_key: str, tourney: str, circuit: str) -> pd.DataFrame:
     return (
         _connection()
         .execute(
@@ -103,7 +103,7 @@ def _top_winners(_root: str, tourney: str, circuit: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _duration_by_year(_root: str, tourney: str, circuit: str) -> pd.DataFrame:
+def _duration_by_year(cache_key: str, tourney: str, circuit: str) -> pd.DataFrame:
     return (
         _connection()
         .execute(
@@ -125,7 +125,7 @@ def _duration_by_year(_root: str, tourney: str, circuit: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _surface_breakdown(_root: str, tourney: str, circuit: str) -> pd.DataFrame:
+def _surface_breakdown(cache_key: str, tourney: str, circuit: str) -> pd.DataFrame:
     return (
         _connection()
         .execute(
@@ -306,7 +306,7 @@ ROUND_ORDER = {
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _editions(_root: str, tourney: str, circuit: str) -> list[int]:
+def _editions(cache_key: str, tourney: str, circuit: str) -> list[int]:
     """Liste des années où le tournoi a été disputé."""
     sql = """
         SELECT DISTINCT CAST(tourney_date / 10000 AS INT) AS annee
@@ -322,7 +322,7 @@ def _editions(_root: str, tourney: str, circuit: str) -> list[int]:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _edition_participants(_root: str, tourney: str, circuit: str, year: int) -> pd.DataFrame:
+def _edition_participants(cache_key: str, tourney: str, circuit: str, year: int) -> pd.DataFrame:
     """Liste des joueurs ayant disputé une édition donnée (W ou L)."""
     sql = """
         SELECT player_id, full_name FROM (
@@ -351,7 +351,9 @@ def _edition_participants(_root: str, tourney: str, circuit: str, year: int) -> 
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _player_run(_root: str, tourney: str, circuit: str, year: int, player_id: int) -> pd.DataFrame:
+def _player_run(
+    cache_key: str, tourney: str, circuit: str, year: int, player_id: int
+) -> pd.DataFrame:
     """Tous les matchs d'un joueur dans une édition, triés par round."""
     sql = """
         SELECT

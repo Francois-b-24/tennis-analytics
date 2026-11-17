@@ -1,4 +1,13 @@
-"""Point d'entrée CLI pour lancer l'ingestion complète."""
+"""Point d'entrée CLI de l'ingestion.
+
+Modes :
+
+- `tennis-ingest` : collecte les sources récentes puis reconstruit
+  `data/processed` à partir de l'archive Sackmann figée + ces sources.
+- `tennis-ingest --rebuild-archive` : retélécharge les CSV Sackmann (miroir
+  d'archive) et régénère `data/reference/sackmann_*.parquet`. Opération
+  ponctuelle : l'archive ne change plus.
+"""
 
 from __future__ import annotations
 
@@ -20,7 +29,7 @@ from tennis_analytics.ingestion.sackmann_loader import (
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="tennis-ingest",
-        description="Ingestion Sackmann ATP/WTA : téléchargement, matérialisation, build tables.",
+        description="Ingestion ATP/WTA : archive Sackmann + sources récentes → data/processed.",
     )
     parser.add_argument(
         "--root",
@@ -29,42 +38,59 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Racine du projet (par défaut : auto-détectée depuis ROOT_PATH ou le code).",
     )
     parser.add_argument(
+        "--rebuild-archive",
+        action="store_true",
+        help="Régénère l'archive Sackmann (data/reference) depuis le miroir CSV.",
+    )
+    parser.add_argument(
         "--skip-download",
         action="store_true",
-        help="Ne pas re-télécharger les CSV (utiliser les fichiers locaux data/raw/).",
+        help="Avec --rebuild-archive : réutilise les CSV déjà présents dans data/raw/.",
     )
     parser.add_argument(
         "--skip-build",
         action="store_true",
-        help="Ne pas reconstruire les tables processed (utile pour debug ingestion seule).",
+        help="Ne pas reconstruire les tables processed.",
     )
     return parser.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Lance le pipeline d'ingestion Sackmann.
+def rebuild_archive(project_root: Path, *, skip_download: bool = False) -> None:
+    """Télécharge les CSV Sackmann et fige l'archive de référence.
 
-    Returns:
-        Code de sortie (0 = succès, 1 = échec).
+    Raises:
+        RuntimeError: Si aucun fichier de matchs n'a pu être obtenu.
     """
-    args = _parse_args(argv)
-    project_root = args.root.resolve() if args.root else get_project_root()
+    from tennis_analytics.transformation.pipeline import build_sackmann_archive
+
     raw_dir = project_root / "data" / "raw"
     interim_dir = project_root / "data" / "interim"
     raw_dir.mkdir(parents=True, exist_ok=True)
-    interim_dir.mkdir(parents=True, exist_ok=True)
+    if not skip_download:
+        saved = download_atp_wta_matches(raw_dir)
+        if not saved:
+            raise RuntimeError("Aucun CSV de matchs téléchargé : source d'archive injoignable.")
+        download_rankings(raw_dir)
+        download_players(raw_dir)
+    materialize_interim_from_raw(raw_dir, interim_dir)
+    build_sackmann_archive(project_root)
 
-    logger.info("Ingestion : racine={} skip_download={}", project_root, args.skip_download)
+
+def main(argv: list[str] | None = None) -> int:
+    """Lance l'ingestion.
+
+    Returns:
+        Code de sortie (0 = succès, 1 = échec). Un échec est **toujours**
+        signalé par un code non nul : un job vert doit signifier des données
+        réellement à jour.
+    """
+    args = _parse_args(argv)
+    project_root = args.root.resolve() if args.root else get_project_root()
+    logger.info("Ingestion : racine={} rebuild_archive={}", project_root, args.rebuild_archive)
 
     try:
-        if not args.skip_download:
-            download_atp_wta_matches(raw_dir)
-            download_rankings(raw_dir)
-            download_players(raw_dir)
-        else:
-            logger.info("Téléchargements ignorés (--skip-download)")
-
-        materialize_interim_from_raw(raw_dir, interim_dir)
+        if args.rebuild_archive:
+            rebuild_archive(project_root, skip_download=args.skip_download)
 
         if not args.skip_build:
             from tennis_analytics.transformation.pipeline import build_processed_tables

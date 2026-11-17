@@ -14,6 +14,8 @@ from sklearn.calibration import CalibratedClassifierCV, calibration_curve
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, brier_score_loss, log_loss
 
+from tennis_analytics.transformation.ordering import sort_chronologically
+
 RANDOM_STATE = 42
 
 
@@ -82,8 +84,7 @@ def assemble_training_frame(
         DataFrame avec la cible `y_win` (1 si victoire du joueur A) et les features différentielles.
     """
     base = _merge_matches_context(matches, match_context)
-    sort_cols = [c for c in ("tourney_date", "match_uid") if c in base.columns]
-    base = base.sort_values(sort_cols or ["tourney_date"]).reset_index(drop=True)
+    base = sort_chronologically(base)
 
     h2h: dict[tuple[int, int], list[int]] = {}
     surface_wins: dict[tuple[int, str], int] = {}

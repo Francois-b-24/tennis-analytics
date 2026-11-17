@@ -55,7 +55,7 @@ def _connection() -> duckdb.DuckDBPyConnection:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _top_elo(_root: str, circuit: str, surface_col: str, top_n: int) -> pd.DataFrame:
+def _top_elo(cache_key: str, circuit: str, surface_col: str, top_n: int) -> pd.DataFrame:
     # surface_col vient d'un dict Python hardcodé — pas de risque d'injection
     sql = f"""
         WITH player_unique AS (

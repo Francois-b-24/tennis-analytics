@@ -60,7 +60,7 @@ CLUSTER_LABELS_TEMPLATE = {
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _player_aggregates(_root: str, circuit: str, min_matches: int = 50) -> pd.DataFrame:
+def _player_aggregates(cache_key: str, circuit: str, min_matches: int = 50) -> pd.DataFrame:
     """Agrège les statistiques de jeu par joueur (winner + loser unifiés).
 
     Construit les features comportementales utiles au clustering :
@@ -147,7 +147,7 @@ def _player_aggregates(_root: str, circuit: str, min_matches: int = 50) -> pd.Da
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _versatility_index(_root: str, circuit: str, min_matches: int = 100) -> pd.DataFrame:
+def _versatility_index(cache_key: str, circuit: str, min_matches: int = 100) -> pd.DataFrame:
     """Calcule l'indice de polyvalence (low std => très polyvalent)."""
     cf = "WHERE p.circuit = ?" if circuit in ("ATP", "WTA") else ""
     params = [circuit] if circuit in ("ATP", "WTA") else []

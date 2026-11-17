@@ -49,7 +49,7 @@ def _connection() -> duckdb.DuckDBPyConnection:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _identity(_root: str, player_id: int) -> pd.DataFrame:
+def _identity(cache_key: str, player_id: int) -> pd.DataFrame:
     return (
         _connection()
         .execute(
@@ -68,7 +68,7 @@ def _identity(_root: str, player_id: int) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _career_stats(_root: str, player_id: int) -> pd.DataFrame:
+def _career_stats(cache_key: str, player_id: int) -> pd.DataFrame:
     return (
         _connection()
         .execute(
@@ -95,7 +95,7 @@ def _career_stats(_root: str, player_id: int) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _surface_stats(_root: str, player_id: int) -> pd.DataFrame:
+def _surface_stats(cache_key: str, player_id: int) -> pd.DataFrame:
     return (
         _connection()
         .execute(
@@ -117,7 +117,7 @@ def _surface_stats(_root: str, player_id: int) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _elo_history(_root: str, player_id: int) -> pd.DataFrame:
+def _elo_history(cache_key: str, player_id: int) -> pd.DataFrame:
     try:
         df = (
             _connection()
@@ -140,7 +140,7 @@ def _elo_history(_root: str, player_id: int) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _recent_matches(_root: str, player_id: int) -> pd.DataFrame:
+def _recent_matches(cache_key: str, player_id: int) -> pd.DataFrame:
     return (
         _connection()
         .execute(

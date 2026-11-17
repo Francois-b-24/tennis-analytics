@@ -52,7 +52,7 @@ def _connection() -> duckdb.DuckDBPyConnection:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _elo_row(_root: str, player_id: int) -> pd.DataFrame:
+def _elo_row(cache_key: str, player_id: int) -> pd.DataFrame:
     try:
         return (
             _connection()
@@ -64,7 +64,7 @@ def _elo_row(_root: str, player_id: int) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _player_dob(_root: str, player_id: int) -> int | None:
+def _player_dob(cache_key: str, player_id: int) -> int | None:
     try:
         row = (
             _connection()
@@ -81,7 +81,7 @@ def _player_dob(_root: str, player_id: int) -> int | None:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _h2h_ratio(_root: str, player_a: int, player_b: int) -> tuple[float, int, int, int]:
+def _h2h_ratio(cache_key: str, player_a: int, player_b: int) -> tuple[float, int, int, int]:
     """Retourne (ratio_a, wins_a, wins_b, total)."""
     try:
         row = (
@@ -109,7 +109,7 @@ def _h2h_ratio(_root: str, player_a: int, player_b: int) -> tuple[float, int, in
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _surface_winrate(_root: str, player_id: int, surface_norm: str) -> float:
+def _surface_winrate(cache_key: str, player_id: int, surface_norm: str) -> float:
     try:
         row = (
             _connection()
@@ -134,7 +134,7 @@ def _surface_winrate(_root: str, player_id: int, surface_norm: str) -> float:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _recent_form(_root: str, player_id: int) -> float:
+def _recent_form(cache_key: str, player_id: int) -> float:
     try:
         df = (
             _connection()
@@ -177,7 +177,7 @@ page_header(
 )
 
 # ── Vérification modèle ───────────────────────────────────────────────────────
-bundle = load_model_bundle(MODEL_PATH)
+bundle = load_model_bundle(MODEL_PATH, _DATA_KEY)
 if bundle is None:
     st.error(
         "Modèle non disponible. Lancez d'abord :\n\n"

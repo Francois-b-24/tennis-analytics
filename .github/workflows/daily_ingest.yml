@@ -43,7 +43,7 @@ jobs:
 
       - name: Vérifier l'environnement
         run: |
-          python -c "from tennis_analytics.ingestion.sackmann_loader import run_ingestion_pipeline; print('OK')"
+          python -c "from tennis_analytics.ingestion.cli import main; print('OK')"
 
       - name: Télécharger, valider et matérialiser
         env:

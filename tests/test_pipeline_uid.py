@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from tennis_analytics.transformation.pipeline import build_processed_tables
+from tennis_analytics.transformation.pipeline import build_processed_tables, build_sackmann_archive
 
 
 def test_match_uid_unique_after_pipeline(tmp_path: Path) -> None:
@@ -27,6 +27,7 @@ def test_match_uid_unique_after_pipeline(tmp_path: Path) -> None:
     )
     matches.to_parquet(interim / "atp_matches_2020.parquet", index=False)
 
+    build_sackmann_archive(tmp_path)
     build_processed_tables(tmp_path)
     out = pd.read_parquet(tmp_path / "data" / "processed" / "matches.parquet")
 
@@ -50,6 +51,7 @@ def test_match_uid_handles_missing_round_column(tmp_path: Path) -> None:
     )
     matches.to_parquet(interim / "atp_matches_2010.parquet", index=False)
 
+    build_sackmann_archive(tmp_path)
     build_processed_tables(tmp_path)
     out = pd.read_parquet(tmp_path / "data" / "processed" / "matches.parquet")
     assert "match_uid" in out.columns

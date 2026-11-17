@@ -54,7 +54,7 @@ def _country_column_name(conn: duckdb.DuckDBPyConnection) -> str:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _top20_per_circuit(_root: str, circuit: str) -> pd.DataFrame:
+def _top20_per_circuit(cache_key: str, circuit: str) -> pd.DataFrame:
     """Top 20 joueurs d'un circuit selon Elo global, avec leurs ratings par surface."""
     conn = _connection()
     country_col = _country_column_name(conn)
@@ -89,7 +89,7 @@ def _top20_per_circuit(_root: str, circuit: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _player_career_stats(_root: str, player_id: int) -> pd.DataFrame:
+def _player_career_stats(cache_key: str, player_id: int) -> pd.DataFrame:
     """Stats de carrière agrégées d'un joueur."""
     return (
         _connection()
@@ -117,7 +117,7 @@ def _player_career_stats(_root: str, player_id: int) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _player_recent_form(_root: str, player_id: int) -> tuple[float, list[str]]:
+def _player_recent_form(cache_key: str, player_id: int) -> tuple[float, list[str]]:
     """Forme sur les 20 derniers matchs (% victoires + séquence V/D)."""
     df = (
         _connection()
@@ -141,7 +141,7 @@ def _player_recent_form(_root: str, player_id: int) -> tuple[float, list[str]]:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _player_surface_winrate(_root: str, player_id: int) -> pd.DataFrame:
+def _player_surface_winrate(cache_key: str, player_id: int) -> pd.DataFrame:
     """Taux de victoire par surface."""
     return (
         _connection()
@@ -168,7 +168,7 @@ def _player_surface_winrate(_root: str, player_id: int) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _atp_vs_wta_top20_stats(_root: str) -> pd.DataFrame:
+def _atp_vs_wta_top20_stats(cache_key: str) -> pd.DataFrame:
     """Stats agrégées comparées entre Top 20 ATP et Top 20 WTA."""
     return (
         _connection()

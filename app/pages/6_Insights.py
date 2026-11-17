@@ -44,7 +44,7 @@ def _connection() -> duckdb.DuckDBPyConnection:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _aces_df_by_year(_root: str, circuit: str) -> pd.DataFrame:
+def _aces_df_by_year(cache_key: str, circuit: str) -> pd.DataFrame:
     cf = circuit_filter_sql(circuit)
     return (
         _connection()
@@ -68,7 +68,7 @@ def _aces_df_by_year(_root: str, circuit: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _duration_by_year(_root: str, circuit: str) -> pd.DataFrame:
+def _duration_by_year(cache_key: str, circuit: str) -> pd.DataFrame:
     cf = circuit_filter_sql(circuit)
     return (
         _connection()
@@ -95,7 +95,7 @@ def _duration_by_year(_root: str, circuit: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _atp_wta_comparison(_root: str) -> pd.DataFrame:
+def _atp_wta_comparison(cache_key: str) -> pd.DataFrame:
     return (
         _connection()
         .execute(
@@ -118,7 +118,7 @@ def _atp_wta_comparison(_root: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _duration_distribution(_root: str, circuit: str) -> pd.DataFrame:
+def _duration_distribution(cache_key: str, circuit: str) -> pd.DataFrame:
     cf = circuit_filter_sql(circuit)
     return (
         _connection()
@@ -332,7 +332,7 @@ st.caption(
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _longest_win_streaks(_root: str, circuit: str, top_n: int = 15) -> pd.DataFrame:
+def _longest_win_streaks(cache_key: str, circuit: str, top_n: int = 15) -> pd.DataFrame:
     """Calcule les plus longues séries de victoires consécutives par joueur.
 
     Pattern gaps-and-islands :

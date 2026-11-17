@@ -17,8 +17,12 @@ from loguru import logger
 from tennis_analytics.ingestion.schemas import MatchesSchema, PlayersSchema, RankingsSchema
 
 RAW_GITHUB: Final[str] = "https://raw.githubusercontent.com"
-ATP_REPO: Final[str] = "JeffSackmann/tennis_atp/master"
-WTA_REPO: Final[str] = "JeffSackmann/tennis_wta/master"
+# Les dépôts d'origine `JeffSackmann/tennis_atp` et `tennis_wta` ont été retirés
+# en juin 2026 (404). On lit désormais un miroir d'archive (CC BY-NC-SA 4.0),
+# figé à la même date ; les variables d'environnement permettent d'en changer.
+ARCHIVE_REPO: Final[str] = "nachotropico-maker/tennis-sackmann-archive/main"
+ATP_REPO: Final[str] = os.getenv("SACKMANN_ATP_REPO", f"{ARCHIVE_REPO}/atp")
+WTA_REPO: Final[str] = os.getenv("SACKMANN_WTA_REPO", f"{ARCHIVE_REPO}/wta")
 MIN_TOURNEY_DATE: Final[int] = 20100101
 USER_AGENT: Final[str] = (
     "tennis-analytics-ingestion/0.1 (+https://github.com/Francois-b-24/tennis-analytics)"
@@ -308,22 +312,3 @@ def materialize_interim_from_raw(raw_dir: Path, interim_dir: Path) -> None:
         path = raw_dir / fname
         if path.exists():
             csv_to_parquet_rankings(path, interim_dir / fname.replace(".csv", ".parquet"), circuit)
-
-
-def run_ingestion_pipeline(root: Path | None = None) -> None:
-    """Orchestre téléchargements, validations et écritures parquet intermédiaires."""
-    project_root = root or get_project_root()
-    raw_dir = project_root / "data" / "raw"
-    interim_dir = project_root / "data" / "interim"
-    raw_dir.mkdir(parents=True, exist_ok=True)
-
-    logger.info("Début de l'ingestion Sackmann (racine projet : {})", project_root)
-    download_atp_wta_matches(raw_dir)
-    download_rankings(raw_dir)
-    download_players(raw_dir)
-    materialize_interim_from_raw(raw_dir, interim_dir)
-
-    from tennis_analytics.transformation.pipeline import build_processed_tables
-
-    build_processed_tables(project_root)
-    logger.info("Ingestion terminée.")
