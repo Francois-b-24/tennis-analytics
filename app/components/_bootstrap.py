@@ -21,6 +21,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import urllib.request
 import uuid
 from pathlib import Path
@@ -164,10 +165,19 @@ def resolve_data_dir(root_str: str) -> tuple[str, str]:
     if not base_url:
         return local
     try:
-        manifest = json.loads(_fetch(f"{base_url}/manifest.json"))
+        # Paramètre anti-cache : une réponse intermédiaire périmée ferait servir
+        # indéfiniment une ancienne publication.
+        manifest = json.loads(_fetch(f"{base_url}/manifest.json?t={int(time.time())}"))
         cache_root = Path(tempfile.gettempdir()) / "tennis-analytics-data"
         cache_root.mkdir(parents=True, exist_ok=True)
         folder = _download_release(base_url, manifest, cache_root)
+        from loguru import logger
+
+        logger.info(
+            "Données servies : publication du {} ({})",
+            manifest.get("generated_at"),
+            manifest["data_hash"][:12],
+        )
         return str(folder), f"release:{manifest['data_hash']}"
     except Exception as exc:  # tout échec (réseau, publication partielle) → copie locale
         from loguru import logger
