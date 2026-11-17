@@ -9,14 +9,43 @@ from typing import Any
 import joblib
 import numpy as np
 import pandas as pd
+import sklearn
 from loguru import logger
 from sklearn.calibration import CalibratedClassifierCV, calibration_curve
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, brier_score_loss, log_loss
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 
 from tennis_analytics.transformation.ordering import sort_chronologically
 
 RANDOM_STATE = 42
+
+#: Variables du modèle (ordre des colonnes du bundle), partagées avec l'inférence.
+FEATURE_COLUMNS: list[str] = [
+    "diff_elo_surface",
+    "diff_elo_global",
+    "diff_rank",
+    "diff_age",
+    "h2h_ratio",
+    "surface_winrate_diff",
+    "recent_form_diff",
+]
+
+
+def rank_gap(rank_a: object, rank_b: object) -> float:
+    """Écart de classement « A mieux classé → positif », en échelle logarithmique.
+
+    Passer du 100e au 50e rang compte autant que du 2e au 1er : `log(rang_B) -
+    log(rang_A)`. Valeur neutre (0) si l'un des classements est inconnu.
+    """
+    try:
+        a, b = float(rank_a), float(rank_b)
+    except (TypeError, ValueError):
+        return 0.0
+    if not (a > 0 and b > 0) or np.isnan(a) or np.isnan(b):
+        return 0.0
+    return float(np.log(b) - np.log(a))
 
 
 @dataclass(slots=True)
@@ -131,7 +160,7 @@ def assemble_training_frame(
         diff_age = _age_from_dob(dob_map.get(w_id), season_year) - _age_from_dob(
             dob_map.get(l_id), season_year
         )
-        diff_rank = 0.0
+        diff_rank = rank_gap(getattr(row, "winner_rank", None), getattr(row, "loser_rank", None))
 
         rows.append(
             {
@@ -196,7 +225,12 @@ def train_calibrated_model(
         Modèle scikit-learn calibré.
     """
     folds = 5
-    base = LogisticRegression(max_iter=500, solver="lbfgs", random_state=RANDOM_STATE)
+    # Variables standardisées : coefficients comparables entre eux (affichés
+    # dans la page Méthodologie) et optimisation mieux conditionnée.
+    base = make_pipeline(
+        StandardScaler(),
+        LogisticRegression(max_iter=1000, solver="lbfgs", random_state=RANDOM_STATE),
+    )
     calibrated = CalibratedClassifierCV(base, method="isotonic", cv=folds)
     calibrated.fit(features, target)
     return calibrated
@@ -207,15 +241,7 @@ def temporal_train_test_split(
     split_date: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
     """Découpe temporelle simple sur `tourney_date`."""
-    feature_cols = [
-        "diff_elo_surface",
-        "diff_elo_global",
-        "diff_rank",
-        "diff_age",
-        "h2h_ratio",
-        "surface_winrate_diff",
-        "recent_form_diff",
-    ]
+    feature_cols = FEATURE_COLUMNS
     train = frame.loc[frame["tourney_date"] < split_date].copy()
     test = frame.loc[frame["tourney_date"] >= split_date].copy()
     return train[feature_cols], test[feature_cols], train["y_win"], test["y_win"]
@@ -270,15 +296,7 @@ def train_and_persist(
     if frame.empty:
         raise ValueError("Jeu d'entraînement vide : vérifiez les sources parquet.")
 
-    feature_cols = [
-        "diff_elo_surface",
-        "diff_elo_global",
-        "diff_rank",
-        "diff_age",
-        "h2h_ratio",
-        "surface_winrate_diff",
-        "recent_form_diff",
-    ]
+    feature_cols = FEATURE_COLUMNS
 
     X_train, X_test, y_train, y_test = temporal_train_test_split(frame, split_date)
     if len(X_train) < 10 or len(X_test) < 10:
@@ -301,8 +319,8 @@ def train_and_persist(
     coefs: np.ndarray | None = None
     try:
         base_estimators = [c.estimator for c in model.calibrated_classifiers_]
-        coefs = np.mean([est.coef_[0] for est in base_estimators], axis=0)
-    except AttributeError:
+        coefs = np.mean([est[-1].coef_[0] for est in base_estimators], axis=0)
+    except (AttributeError, TypeError, IndexError):
         coefs = None
 
     diagnostics = {
@@ -323,7 +341,15 @@ def train_and_persist(
             "n_train": len(X_train),
             "split_date": int(split_date),
         },
+        "sklearn_version": sklearn.__version__,
+        "trained_until": int(frame["tourney_date"].max()),
     }
+
+    # Le modèle évalué ne voit pas les matchs postérieurs à `split_date` ; le
+    # modèle publié est ré-entraîné sur tout l'historique (mêmes réglages), pour
+    # tenir compte des saisons les plus récentes. Les métriques restent celles
+    # de l'évaluation hors échantillon.
+    model = train_calibrated_model(frame[feature_cols], frame["y_win"])
 
     out_dir = processed / "models"
     out_dir.mkdir(parents=True, exist_ok=True)

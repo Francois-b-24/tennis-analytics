@@ -15,6 +15,9 @@ from typing import Final
 
 import duckdb
 
+from tennis_analytics.modeling.win_probability import rank_gap
+from tennis_analytics.ratings.elo import _apply_inactivity_decay, _parse_date_int
+
 #: Colonne Elo selon la surface normalisée.
 SURFACE_ELO: Final[dict[str, str]] = {
     "hard": "elo_hard",
@@ -63,10 +66,17 @@ def player_context(
     today = today or date.today()
     elo_col = SURFACE_ELO.get(surface_norm, "elo_global")
     elo = conn.execute(
-        f"SELECT {elo_col}, elo_global FROM v_elo_latest WHERE player_id = ?", [player_id]
+        f"SELECT {elo_col}, elo_global, last_match_date FROM v_elo_latest WHERE player_id = ?",
+        [player_id],
     ).fetchone()
     elo_surface = float(elo[0]) if elo and elo[0] is not None else DEFAULT_ELO
     elo_global = float(elo[1]) if elo and elo[1] is not None else DEFAULT_ELO
+    if elo and elo[2] is not None:
+        # Même décroissance d'inactivité qu'avant chaque match à l'entraînement :
+        # un joueur absent depuis des mois n'est pas jugé sur son dernier niveau.
+        last, now = _parse_date_int(elo[2]), _parse_date_int(int(today.strftime("%Y%m%d")))
+        elo_surface = _apply_inactivity_decay(elo_surface, last, now)
+        elo_global = _apply_inactivity_decay(elo_global, last, now)
 
     dob = _scalar(conn, "SELECT dob FROM v_players WHERE player_id = ?", [player_id])
     try:
@@ -130,19 +140,14 @@ def matchup_features(a: PlayerContext, b: PlayerContext, h2h: tuple[int, int]) -
     """Variables du modèle pour « A bat B » (écarts A - B).
 
     Le classement n'est utilisé que si les deux joueurs en ont un (sinon 0,
-    valeur neutre).
+    valeur neutre), en écart de log-rangs comme à l'entraînement.
     """
     wins_a, wins_b = h2h
     total = wins_a + wins_b
-    diff_rank = 0.0
-    if a.rank is not None and b.rank is not None:
-        # Un meilleur classement est un nombre plus petit : écart B - A positif
-        # quand A est mieux classé.
-        diff_rank = b.rank - a.rank
     return {
         "diff_elo_surface": a.elo_surface - b.elo_surface,
         "diff_elo_global": a.elo_global - b.elo_global,
-        "diff_rank": diff_rank,
+        "diff_rank": rank_gap(a.rank, b.rank),
         "diff_age": a.age - b.age,
         "h2h_ratio": wins_a / total if total else 0.5,
         "surface_winrate_diff": a.surface_winrate - b.surface_winrate,

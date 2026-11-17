@@ -133,7 +133,8 @@ with tab_model:
         st.markdown(
             "Une **régression logistique calibrée** estime la probabilité de victoire à partir "
             "des écarts entre les deux joueurs. Elle est évaluée sur des matchs **postérieurs** "
-            "à ceux d'entraînement, pour mesurer sa fiabilité sur des matchs qu'elle n'a jamais vus."
+            "à ceux d'entraînement, pour mesurer sa fiabilité sur des matchs qu'elle n'a jamais vus ; "
+            "le modèle utilisé par la page Prédictions est ensuite ré-entraîné sur tout l'historique."
         )
         metrics = diagnostics.get("metrics", {})
         kpi_row(
