@@ -148,7 +148,6 @@ def _clusters(cache_key: str, circuit: str, min_matches: int, n_styles: int) -> 
     return out
 
 
-circuit = circuit_selectbox(include_all=False)
 page_header(
     "Styles de jeu",
     subtitle=(
@@ -156,6 +155,7 @@ page_header(
         "d'une surface à l'autre."
     ),
 )
+circuit = circuit_selectbox(include_all=False)
 with st.expander("Réglages", icon=":material/tune:"):
     col1, col2 = st.columns(2)
     n_styles = col1.slider("Nombre de styles", 3, 6, 5)

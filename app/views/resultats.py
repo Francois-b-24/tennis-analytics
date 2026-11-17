@@ -25,12 +25,12 @@ from components.widgets import (
 _ROOT, _CONNECTION = init_app(__file__)
 _DATA_KEY = data_key(_ROOT)
 
-circuit = circuit_selectbox()
 
 page_header(
     "Résultats",
     subtitle="Les tournois des dernières semaines, tour par tour, et les vainqueurs de la saison.",
 )
+circuit = circuit_selectbox()
 
 tournaments = recent_tournaments(_DATA_KEY, circuit, 40)
 if tournaments.empty:

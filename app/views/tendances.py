@@ -120,8 +120,8 @@ def _line(
     )
 
 
-circuit = circuit_selectbox()
 page_header("Tendances", subtitle="Comment le tennis a évolué depuis 2010.")
+circuit = circuit_selectbox()
 
 tab_serve, tab_duration, tab_circuits, tab_streaks = st.tabs(
     ["Service", "Durée des matchs", "ATP vs WTA", "Séries de victoires"]

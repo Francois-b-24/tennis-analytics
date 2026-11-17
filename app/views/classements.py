@@ -27,7 +27,6 @@ SURFACES = {
     "Gazon": "elo_grass",
 }
 
-circuit = circuit_selectbox()
 
 page_header(
     "Classements Elo",
@@ -36,6 +35,7 @@ page_header(
         "il mesure le niveau réel plus finement que le classement officiel."
     ),
 )
+circuit = circuit_selectbox()
 
 controls = st.columns([4, 2, 2], vertical_alignment="bottom")
 surface_label = controls[0].segmented_control(
@@ -47,7 +47,7 @@ surface_label = controls[0].segmented_control(
 )
 top_n = controls[1].selectbox("Joueurs affichés", [10, 20, 50, 100], index=1, key="classement_top")
 include_inactive = controls[2].toggle(
-    "Inclure les inactifs",
+    "Joueurs inactifs",
     value=False,
     help="Par défaut, seuls les joueurs ayant joué dans les 12 derniers mois sont classés.",
 )

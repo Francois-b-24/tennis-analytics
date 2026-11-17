@@ -38,7 +38,6 @@ def _contexts(cache_key: str, player_a: int, player_b: int, surface: str) -> tup
     )
 
 
-circuit = circuit_selectbox()
 page_header(
     "Prédictions",
     subtitle=(
@@ -46,6 +45,7 @@ page_header(
         "2010 (Elo, confrontations, forme, réussite sur la surface)."
     ),
 )
+circuit = circuit_selectbox()
 
 bundle = load_model_bundle(
     str(processed_dir(_ROOT) / "models" / "logreg_calibrated.joblib"), _DATA_KEY

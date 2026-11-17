@@ -132,8 +132,8 @@ def _num(value: object) -> float | None:
     return None if math.isnan(number) else number
 
 
-circuit = circuit_selectbox()
 page_header("Joueurs", subtitle="Fiche détaillée : niveau par surface, bilan et forme récente.")
+circuit = circuit_selectbox()
 
 players = player_options(_DATA_KEY, circuit)
 if players.empty:

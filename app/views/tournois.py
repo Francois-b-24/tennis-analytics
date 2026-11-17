@@ -105,8 +105,8 @@ def _player_run(
     ).df()
 
 
-circuit = circuit_selectbox(include_all=False)
 page_header("Tournois", subtitle="L'histoire de chaque tournoi depuis 2010.")
+circuit = circuit_selectbox(include_all=False)
 if st.session_state.get("circuit") == "Tous":
     st.caption(
         "Circuit affiché : ATP. Choisissez WTA dans la barre latérale pour les tournois féminins."

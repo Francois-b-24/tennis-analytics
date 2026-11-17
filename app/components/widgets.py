@@ -397,13 +397,13 @@ def circuit_selectbox(
         default: Valeur initiale parmi `CIRCUITS`.
         key: Ignoré (compatibilité) : la clé est toujours :data:`CIRCUIT_KEY`.
         include_all: Si False, « Tous » n'est pas une valeur acceptée.
-        location: Conteneur Streamlit (par défaut, la barre latérale).
+        location: Conteneur Streamlit (par défaut, la page, sous le titre).
 
     Returns:
         Valeur sélectionnée, garantie dans l'allowlist.
     """
     del key
-    container = location if location is not None else st.sidebar
+    container = location if location is not None else st
     if CIRCUIT_KEY not in st.session_state and default in CIRCUITS:
         st.session_state[CIRCUIT_KEY] = default
     choice = container.segmented_control(
@@ -413,7 +413,7 @@ def circuit_selectbox(
         required=True,
         bind="query-params",
         persist_state="session",
-        width="stretch",
+        label_visibility="collapsed",
     )
     value = choice if choice in CIRCUITS else default
     if not include_all and value == "Tous":

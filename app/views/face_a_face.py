@@ -74,11 +74,11 @@ def _serve_profile(frame: pd.DataFrame, player_id: int) -> dict[str, float]:
     }
 
 
-circuit = circuit_selectbox()
 page_header(
     "Face-à-face",
     subtitle="Bilan de leurs confrontations, favori selon l'Elo et historique complet.",
 )
+circuit = circuit_selectbox()
 
 players = player_options(_DATA_KEY, circuit)
 if players.empty:

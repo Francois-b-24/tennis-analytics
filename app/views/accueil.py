@@ -27,12 +27,12 @@ from components.widgets import (
 _ROOT, _CONNECTION = init_app(__file__)
 _DATA_KEY = data_key(_ROOT)
 
-circuit = circuit_selectbox()
 
 page_header(
     "Tennis Analytics",
     subtitle="Résultats ATP et WTA, classements Elo par surface et analyses depuis 2010.",
 )
+circuit = circuit_selectbox()
 
 # ── Tournois récents ────────────────────────────────────────────────────────
 section("À la une", caption="Les derniers tournois, terminés ou en cours.")
