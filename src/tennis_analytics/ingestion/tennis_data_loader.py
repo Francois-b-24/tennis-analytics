@@ -318,7 +318,24 @@ def to_matches(
                     "source": "tennis-data",
                 }
             )
-    out = pd.DataFrame(rows)
+    out = fix_duplicate_finals(pd.DataFrame(rows))
     for col in STAT_COLUMNS:
         out[col] = np.nan
+    return out
+
+
+def fix_duplicate_finals(matches: pd.DataFrame) -> pd.DataFrame:
+    """Une seule finale par tournoi : les « finales » antérieures sont des demies.
+
+    tennis-data étiquette parfois une demi-finale « The Final » (ex. WTA Finals
+    2026) ; sans correction, le tournoi aurait deux vainqueurs.
+    """
+    if matches.empty or "round" not in matches.columns:
+        return matches
+    out = matches.copy()
+    finals = out.loc[out["round"] == "F"]
+    for _, group in finals.groupby("tourney_id"):
+        if len(group) > 1:
+            last = group.sort_values(["match_date", "match_num"], kind="mergesort").index[-1]
+            out.loc[group.index.difference([last]), "round"] = "SF"
     return out

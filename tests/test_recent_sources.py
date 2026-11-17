@@ -248,3 +248,16 @@ def test_weekly_rankings_keep_latest_rank_of_week() -> None:
     out = weekly_rankings(frame)
     assert out.loc[out["player"] == 1, "rank"].tolist() == [10]
     assert out["ranking_date"].unique().tolist() == [20261109]
+
+
+def test_duplicate_finals_become_semifinals() -> None:
+    frame = pd.DataFrame(
+        {
+            "tourney_id": ["t", "t", "t"],
+            "round": ["SF", "F", "F"],
+            "match_date": [20261114, 20261114, 20261115],
+            "match_num": [1, 2, 3],
+        }
+    )
+    out = tennis_data_loader.fix_duplicate_finals(frame)
+    assert out["round"].tolist() == ["SF", "SF", "F"]
