@@ -355,7 +355,7 @@ if not surface_df.empty:
             margin=dict(l=140, r=20, t=50, b=20),
         )
         apply_tennis_theme(fig_heat)
-        st.plotly_chart(fig_heat, use_container_width=True)
+        st.plotly_chart(fig_heat, width="stretch")
         st.caption(
             "🔴 = surface où le premier joueur domine · 🔵 = surface où le second domine. "
             "La cellule affiche le bilan brut et le % de victoires."
@@ -443,7 +443,7 @@ fig.update_layout(
     title="Comparaison de style (moyennes conditionnelles sur l'H2H)",
 )
 apply_tennis_theme(fig)
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, width="stretch")
 
 st.caption(
     "Les ratios du radar sont des moyennes empiriques sur les matchs H2H disponibles ; "

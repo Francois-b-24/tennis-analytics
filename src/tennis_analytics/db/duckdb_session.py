@@ -79,15 +79,13 @@ def create_connection(
         # Identifiants globalement uniques (WTA décalés, cf. tennis_analytics.ids) :
         # chaque joueur appartient à un seul circuit, plus de cas « BOTH ».
         _register_parquet_view(connection, "v_players", players_path)
-        connection.execute(
-            """
+        connection.execute("""
             CREATE OR REPLACE VIEW v_player_names AS
             SELECT DISTINCT
                 player_id,
                 TRIM(CONCAT(COALESCE(name_first, ''), ' ', COALESCE(name_last, ''))) AS full_name,
                 circuit
             FROM v_players;
-            """
-        )
+            """)
 
     return connection

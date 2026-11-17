@@ -96,24 +96,20 @@ date_range = connection.execute(
 min_date = format_date_dd_mm_yyyy(date_range[0]) if date_range else "—"
 max_date = format_date_dd_mm_yyyy(date_range[1]) if date_range else "—"
 
-last_atp = connection.execute(
-    """
+last_atp = connection.execute("""
     SELECT tourney_name, tourney_date
     FROM v_matches
     WHERE circuit = 'ATP'
     ORDER BY tourney_date DESC
     LIMIT 1
-    """
-).fetchone()
-last_wta = connection.execute(
-    """
+    """).fetchone()
+last_wta = connection.execute("""
     SELECT tourney_name, tourney_date
     FROM v_matches
     WHERE circuit = 'WTA'
     ORDER BY tourney_date DESC
     LIMIT 1
-    """
-).fetchone()
+    """).fetchone()
 
 last_atp_name = last_atp[0] if last_atp else "—"
 last_atp_date = format_date_dd_mm_yyyy(last_atp[1]) if last_atp else ""

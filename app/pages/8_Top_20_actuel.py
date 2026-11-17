@@ -170,10 +170,7 @@ def _player_surface_winrate(cache_key: str, player_id: int) -> pd.DataFrame:
 @st.cache_data(ttl=3600, show_spinner=False)
 def _atp_vs_wta_top20_stats(cache_key: str) -> pd.DataFrame:
     """Stats agrégées comparées entre Top 20 ATP et Top 20 WTA."""
-    return (
-        _connection()
-        .execute(
-            """
+    return _connection().execute("""
         WITH top20 AS (
             SELECT player_id, p.circuit
             FROM v_elo_latest e
@@ -201,10 +198,7 @@ def _atp_vs_wta_top20_stats(cache_key: str) -> pd.DataFrame:
         WHERE m.w_ace IS NOT NULL
         GROUP BY t.circuit
         ORDER BY t.circuit
-        """
-        )
-        .df()
-    )
+        """).df()
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -374,7 +368,7 @@ with col_a:
         margin=dict(l=20, r=20, t=20, b=20),
     )
     apply_tennis_theme(fig_radar)
-    st.plotly_chart(fig_radar, use_container_width=True)
+    st.plotly_chart(fig_radar, width="stretch")
 
 # B) % Victoires par surface
 with col_b:
@@ -401,7 +395,7 @@ with col_b:
             margin=dict(l=40, r=20, t=20, b=40),
         )
         apply_tennis_theme(fig_surf)
-        st.plotly_chart(fig_surf, use_container_width=True)
+        st.plotly_chart(fig_surf, width="stretch")
     else:
         st.info("Pas assez de matchs pour calculer un taux par surface.")
 
@@ -473,14 +467,13 @@ else:
         margin=dict(l=40, r=20, t=60, b=40),
     )
     apply_tennis_theme(fig_cmp)
-    st.plotly_chart(fig_cmp, use_container_width=True)
+    st.plotly_chart(fig_cmp, width="stretch")
 
     # Lecture rapide
     if len(cmp) == 2:
         atp_row = cmp[cmp["circuit"] == "ATP"].iloc[0]
         wta_row = cmp[cmp["circuit"] == "WTA"].iloc[0]
-        st.markdown(
-            f"""
+        st.markdown(f"""
             **Lecture rapide :**
             - 🎾 Les Top 20 ATP servent en moyenne **{atp_row['aces_par_match']:.1f} aces / match**
               contre **{wta_row['aces_par_match']:.1f}** côté WTA.
@@ -488,5 +481,4 @@ else:
               contre **{int(wta_row['duree_moy'])} min** en WTA.
             - 🛡️ Les Top 20 ATP sauvent **{atp_row['bp_saves_pct']:.1f} %** de leurs balles de break,
               les WTA **{wta_row['bp_saves_pct']:.1f} %**.
-            """
-        )
+            """)

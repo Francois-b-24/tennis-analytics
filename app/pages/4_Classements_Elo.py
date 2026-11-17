@@ -107,8 +107,7 @@ st.caption(
 )
 
 with st.expander("ℹ️ Qu'est-ce que le rating Elo ?"):
-    st.markdown(
-        """
+    st.markdown("""
         Le **rating Elo** est un système de notation inventé par le physicien Arpad Elo
         (initialement pour les échecs) puis adapté au tennis. Il attribue à chaque joueur
         un score numérique reflétant son **niveau actuel** : plus le score est élevé, plus
@@ -137,8 +136,7 @@ with st.expander("ℹ️ Qu'est-ce que le rating Elo ?"):
 
         Notre Elo est **calculé maison** depuis 2010 ; il s'inspire des approches publiques
         (FiveThirtyEight, Tennis Abstract) sans en reproduire un modèle propriétaire.
-        """
-    )
+        """)
 
 df = _top_elo(_DATA_KEY, circuit, surface_col, top_n)
 
@@ -198,7 +196,7 @@ fig_bar.update_layout(
     margin=dict(l=10, r=10),
 )
 apply_tennis_theme(fig_bar)
-st.plotly_chart(fig_bar, use_container_width=True)
+st.plotly_chart(fig_bar, width="stretch")
 
 # ── Section C — Comparaison multi-surface pour un joueur ─────────────────────
 section("Comparaison 4 surfaces pour un joueur", level=3, divider_before=True)
@@ -239,4 +237,4 @@ fig_comp.update_layout(
     showlegend=False,
 )
 apply_tennis_theme(fig_comp)
-st.plotly_chart(fig_comp, use_container_width=True)
+st.plotly_chart(fig_comp, width="stretch")

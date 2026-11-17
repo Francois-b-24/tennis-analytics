@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-17T18:21:01+00:00",
+  "generated_at": "2026-11-17T18:36:48+00:00",
   "last_match_date": {
     "ATP": 20261117,
     "WTA": 20261115
@@ -13,6 +13,11 @@
   "archive_cutoff": {
     "ATP": 20260525,
     "WTA": 20260525
+  },
+  "tennis_data": "live",
+  "tennis_data_last_match": {
+    "ATP": 20261114,
+    "WTA": 20261115
   },
   "new_players": [
     "ATP A. Hernandez",

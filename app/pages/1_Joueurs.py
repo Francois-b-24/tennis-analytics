@@ -303,7 +303,7 @@ if not surface_df.empty:
     )
     fig_surf.update_layout(barmode="group", title="Victoires et défaites par surface")
     apply_tennis_theme(fig_surf)
-    st.plotly_chart(fig_surf, use_container_width=True)
+    st.plotly_chart(fig_surf, width="stretch")
 
 # ── Section C — Évolution Elo ─────────────────────────────────────────────────
 section("Évolution du rating Elo", level=3, divider_before=True)
@@ -337,7 +337,7 @@ if not elo_hist.empty and "date" in elo_hist.columns:
         hovermode="x unified",
     )
     apply_tennis_theme(fig_elo)
-    st.plotly_chart(fig_elo, use_container_width=True)
+    st.plotly_chart(fig_elo, width="stretch")
 else:
     st.info(
         f"Aucun historique Elo pour {selected_name} — ce joueur n'a pas de match "

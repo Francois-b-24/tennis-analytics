@@ -30,23 +30,19 @@ _options = player_options.__wrapped__
 def connexion(monkeypatch: pytest.MonkeyPatch) -> duckdb.DuckDBPyConnection:
     """Base en mémoire : 2 joueurs ayant joué, 1 fantôme sans aucun match."""
     conn = duckdb.connect(":memory:")
-    conn.execute(
-        """
+    conn.execute("""
         CREATE VIEW v_players AS SELECT * FROM (VALUES
             (101, 'Alice', 'Active', 'FRA', 'WTA'),
             (102, 'Bob',   'Actif',  'ESP', 'ATP'),
             (999, 'Carl',  'Fantome','USA', 'ATP')
         ) AS t(player_id, name_first, name_last, ioc, circuit);
-        """
-    )
-    conn.execute(
-        """
+        """)
+    conn.execute("""
         CREATE VIEW v_matches AS SELECT * FROM (VALUES
             (101, 102, 'WTA'),
             (102, 101, 'ATP')
         ) AS t(winner_id, loser_id, circuit);
-        """
-    )
+        """)
     monkeypatch.setattr("components.queries._shared_connection", lambda _cle: conn)
     return conn
 

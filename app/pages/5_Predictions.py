@@ -339,7 +339,7 @@ fig.update_layout(
     margin=dict(l=10, r=10, t=10, b=30),
 )
 apply_tennis_theme(fig)
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, width="stretch")
 
 # ── Détail des features ───────────────────────────────────────────────────────
 with st.expander("Détail des indicateurs utilisés par le modèle"):
@@ -441,7 +441,7 @@ if diagnostics:
                 legend=dict(orientation="h", y=-0.2),
             )
             apply_tennis_theme(fig_cal)
-            st.plotly_chart(fig_cal, use_container_width=True)
+            st.plotly_chart(fig_cal, width="stretch")
             st.caption(
                 "Plus la courbe colle à la diagonale, plus les probabilités annoncées "
                 "reflètent la réalité (ex : une prédiction à 70 % se vérifie ~70 % du temps)."
@@ -492,7 +492,7 @@ if diagnostics:
                 margin=dict(l=10, r=40),
             )
             apply_tennis_theme(fig_fi)
-            st.plotly_chart(fig_fi, use_container_width=True)
+            st.plotly_chart(fig_fi, width="stretch")
             st.caption(
                 "Coefficient positif (vert) = augmente la probabilité de victoire du joueur A. "
                 "Plus la barre est longue, plus l'indicateur pèse dans la décision."

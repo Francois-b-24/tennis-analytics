@@ -10,20 +10,18 @@
 # L'application est installée en editable par Streamlit Cloud grâce à la
 # dernière ligne (`-e .`), ce qui rend le package `tennis_analytics` importable.
 
-duckdb==1.1.3
-joblib==1.4.2
-loguru==0.7.2
-multimethod>=1.8,<2.0
-numpy==2.1.3
+duckdb==2.0.0
+joblib==1.6.0
+loguru==0.8.0
+numpy==2.4.6
 openpyxl==3.1.5
-pandas==2.2.3
-pandera==0.21.1
-plotly==5.24.1
-pyarrow==18.0.0
-pydantic==2.9.2
-python-dotenv==1.0.1
-scikit-learn==1.5.2
-streamlit==1.40.1
+pandas==3.1.1
+pandera==0.36.0
+plotly==7.1.0
+pyarrow==26.0.1
+python-dotenv==1.2.4
+scikit-learn==1.9.1
+streamlit==1.67.0
 
 # Rend `tennis_analytics.*` importable depuis app/ sans bidouille de sys.path.
 -e .

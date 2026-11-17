@@ -112,7 +112,7 @@ def weekly_rankings(matches: pd.DataFrame) -> pd.DataFrame:
     if stacked.empty:
         return pd.DataFrame(columns=["ranking_date", "rank", "player", "points", "circuit"])
     day = pd.to_datetime(stacked["match_date"].astype(str), format="%Y%m%d")
-    monday = day - pd.to_timedelta(day.dt.weekday, unit="D")
+    monday = day - pd.to_timedelta(day.dt.day_of_week, unit="D")
     stacked["ranking_date"] = monday.dt.strftime("%Y%m%d").astype("int64")
     stacked = stacked.sort_values(["ranking_date", "match_date"], kind="mergesort")
     latest = stacked.groupby(["circuit", "ranking_date", "player"], as_index=False).tail(1)

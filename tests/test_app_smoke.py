@@ -31,5 +31,7 @@ def test_page_renders_without_exception(page: Path) -> None:
 
     at = AppTest.from_file(str(page), default_timeout=120)
     at.run()
-    assert not at.exception, [e.value for e in at.exception]
+    assert not at.exception, "\n".join(
+        "\n".join(e.stack_trace or []) or str(e.value) for e in at.exception
+    )
     assert len(at.main.children) > 0

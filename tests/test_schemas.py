@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import pytest
 
 from tennis_analytics.ingestion.schemas import MatchesSchema, PlayersSchema, RankingsSchema

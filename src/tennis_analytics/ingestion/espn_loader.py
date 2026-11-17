@@ -91,7 +91,7 @@ def fetch_rankings(matcher: PlayerMatcher, today: date) -> pd.DataFrame:
 
 
 def _calendar_gap(a: pd.Timestamp, b: pd.Timestamp) -> int:
-    diff = abs(a.dayofyear - b.dayofyear)
+    diff = abs(a.day_of_year - b.day_of_year)
     return min(diff, 365 - diff)
 
 

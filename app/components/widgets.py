@@ -200,25 +200,21 @@ def format_percent(value: float | None, digits: int = 1) -> str:
 def load_player_options(connection: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     """Retourne la liste des joueurs disponibles (id + nom)."""
     try:
-        frame = connection.execute(
-            """
+        frame = connection.execute("""
             SELECT player_id, full_name
             FROM v_player_names
             WHERE TRIM(full_name) <> ''
             ORDER BY full_name;
-            """
-        ).df()
+            """).df()
         if not frame.empty:
             return frame.drop_duplicates(subset=["full_name"])
     except duckdb.Error:
         pass
-    frame = connection.execute(
-        """
+    frame = connection.execute("""
         SELECT DISTINCT winner_id AS player_id, winner_name AS full_name
         FROM v_matches
         ORDER BY full_name;
-        """
-    ).df()
+        """).df()
     return frame.drop_duplicates(subset=["full_name"])
 
 
@@ -1046,7 +1042,7 @@ def df_styled(
     st.dataframe(
         df,
         column_config=merged if merged else None,
-        height=height,
+        height=height if height else "auto",
         hide_index=hide_index,
-        use_container_width=use_container_width,
+        width="stretch" if use_container_width else "content",
     )

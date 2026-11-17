@@ -217,7 +217,7 @@ if not top_w.empty:
         height=max(350, len(top_w) * 40),
     )
     apply_tennis_theme(fig_top)
-    st.plotly_chart(fig_top, use_container_width=True)
+    st.plotly_chart(fig_top, width="stretch")
 
     with st.expander("Tableau détaillé"):
         df_styled(
@@ -254,7 +254,7 @@ if not dur_df.empty and dur_df["duree_moy"].notna().any():
         hovermode="x unified",
     )
     apply_tennis_theme(fig_dur)
-    st.plotly_chart(fig_dur, use_container_width=True)
+    st.plotly_chart(fig_dur, width="stretch")
 
 # ── Section D — Répartition par surface ──────────────────────────────────────
 surf_df = _surface_breakdown(_DATA_KEY, tourney, circuit)
@@ -278,7 +278,7 @@ if not surf_df.empty:
         yaxis_title="Nombre de matchs",
     )
     apply_tennis_theme(fig_surf)
-    st.plotly_chart(fig_surf, use_container_width=True)
+    st.plotly_chart(fig_surf, width="stretch")
 
 
 # ── Section E — Parcours d'un joueur dans une édition ───────────────────────

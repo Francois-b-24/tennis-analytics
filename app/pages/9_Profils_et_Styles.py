@@ -339,7 +339,7 @@ fig_scatter.update_layout(
     legend=dict(orientation="h", y=-0.15),
 )
 apply_tennis_theme(fig_scatter)
-st.plotly_chart(fig_scatter, use_container_width=True)
+st.plotly_chart(fig_scatter, width="stretch")
 
 # Caractéristiques de chaque cluster
 with st.expander("📊 Profil moyen de chaque style"):
@@ -405,7 +405,7 @@ if selected_id is not None:
             showlegend=True,
         )
         apply_tennis_theme(fig_radar)
-        st.plotly_chart(fig_radar, use_container_width=True)
+        st.plotly_chart(fig_radar, width="stretch")
 
 # ── Section C — Indice de polyvalence ────────────────────────────────────────
 section("Indice de polyvalence multi-surface", level=3, divider_before=True)
@@ -458,7 +458,7 @@ else:
         margin=dict(l=10, r=60),
     )
     apply_tennis_theme(fig_v)
-    st.plotly_chart(fig_v, use_container_width=True)
+    st.plotly_chart(fig_v, width="stretch")
 
     # Tableau détaillé
     with st.expander("Voir le classement complet"):

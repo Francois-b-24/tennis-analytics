@@ -46,10 +46,7 @@ def _connection() -> duckdb.DuckDBPyConnection:
 @st.cache_data(ttl=3600, show_spinner=False)
 def _aces_df_by_year(cache_key: str, circuit: str) -> pd.DataFrame:
     cf = circuit_filter_sql(circuit)
-    return (
-        _connection()
-        .execute(
-            f"""
+    return _connection().execute(f"""
         SELECT
             CAST(tourney_date / 10000 AS INT) AS annee,
             ROUND(AVG(w_ace + l_ace), 2) AS aces_par_match,
@@ -61,19 +58,13 @@ def _aces_df_by_year(cache_key: str, circuit: str) -> pd.DataFrame:
           {cf}
         GROUP BY annee
         ORDER BY annee
-        """
-        )
-        .df()
-    )
+        """).df()
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _duration_by_year(cache_key: str, circuit: str) -> pd.DataFrame:
     cf = circuit_filter_sql(circuit)
-    return (
-        _connection()
-        .execute(
-            f"""
+    return _connection().execute(f"""
         SELECT
             CAST(tourney_date / 10000 AS INT) AS annee,
             ROUND(AVG(minutes) FILTER (WHERE minutes > 0 AND minutes < 400), 0) AS duree_moy,
@@ -88,18 +79,12 @@ def _duration_by_year(cache_key: str, circuit: str) -> pd.DataFrame:
           {cf}
         GROUP BY annee
         ORDER BY annee
-        """
-        )
-        .df()
-    )
+        """).df()
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _atp_wta_comparison(cache_key: str) -> pd.DataFrame:
-    return (
-        _connection()
-        .execute(
-            """
+    return _connection().execute("""
         SELECT
             circuit,
             CAST(tourney_date / 10000 AS INT) AS annee,
@@ -111,19 +96,13 @@ def _atp_wta_comparison(cache_key: str) -> pd.DataFrame:
           AND circuit IN ('ATP', 'WTA')
         GROUP BY circuit, annee
         ORDER BY annee, circuit
-        """
-        )
-        .df()
-    )
+        """).df()
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _duration_distribution(cache_key: str, circuit: str) -> pd.DataFrame:
     cf = circuit_filter_sql(circuit)
-    return (
-        _connection()
-        .execute(
-            f"""
+    return _connection().execute(f"""
         SELECT
             COALESCE(NULLIF(surface, ''), 'Inconnue') AS surface,
             minutes
@@ -131,10 +110,7 @@ def _duration_distribution(cache_key: str, circuit: str) -> pd.DataFrame:
         WHERE minutes > 0
           AND minutes < 400
           {cf}
-        """
-        )
-        .df()
-    )
+        """).df()
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -200,7 +176,7 @@ if not aces_df.empty:
         hovermode="x unified",
     )
     apply_tennis_theme(fig_aces)
-    st.plotly_chart(fig_aces, use_container_width=True)
+    st.plotly_chart(fig_aces, width="stretch")
 else:
     st.info("Données indisponibles pour les aces.")
 
@@ -236,7 +212,7 @@ if not dur_df.empty and dur_df["duree_moy"].notna().any():
         hovermode="x unified",
     )
     apply_tennis_theme(fig_dur)
-    st.plotly_chart(fig_dur, use_container_width=True)
+    st.plotly_chart(fig_dur, width="stretch")
 else:
     st.info("Données de durée indisponibles.")
 
@@ -286,7 +262,7 @@ if not cmp_df.empty:
         hovermode="x unified",
     )
     apply_tennis_theme(fig_cmp)
-    st.plotly_chart(fig_cmp, use_container_width=True)
+    st.plotly_chart(fig_cmp, width="stretch")
 else:
     st.info("Données de comparaison ATP/WTA indisponibles.")
 
@@ -318,7 +294,7 @@ if not dist_df.empty:
         showlegend=True,
     )
     apply_tennis_theme(fig_box)
-    st.plotly_chart(fig_box, use_container_width=True)
+    st.plotly_chart(fig_box, width="stretch")
 else:
     st.info("Données de durée par surface indisponibles.")
 
@@ -440,6 +416,6 @@ if not streaks_df.empty:
             margin=dict(l=10, r=40),
         )
         apply_tennis_theme(fig_streaks)
-        st.plotly_chart(fig_streaks, use_container_width=True)
+        st.plotly_chart(fig_streaks, width="stretch")
 else:
     st.info("Données de séries indisponibles.")

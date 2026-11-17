@@ -42,8 +42,7 @@ if PDF_PATH.exists():
 
 # ── Section 1 — Définition ───────────────────────────────────────────────────
 section("1. Définition", level=2, divider_before=True)
-st.markdown(
-    """
+st.markdown("""
 Le **rating Elo** est un système de classement qui attribue un score numérique à
 chaque joueur et met à jour ce score après chaque match en fonction du résultat
 **et** de la force de l'adversaire affronté.
@@ -59,20 +58,16 @@ Counter-Strike), et même certaines applications de rencontres.
 **L'idée centrale en une phrase :** un joueur gagne plus de points en battant un
 adversaire mieux noté, et en perd plus en s'inclinant face à un adversaire moins
 bien noté.
-"""
-)
+""")
 
-st.markdown(
-    """
+st.markdown("""
 > *« L'Elo n'est pas un classement. C'est une mesure mathématique du niveau
 > réel d'un compétiteur, qui apprend de chaque résultat. »*
-"""
-)
+""")
 
 # ── Section 2 — Mécanique mathématique ───────────────────────────────────────
 section("2. La mécanique mathématique", level=2, divider_before=True)
-st.markdown(
-    """
+st.markdown("""
 Tout le système Elo tient en **deux formules**. C'est là sa beauté : une élégance
 mathématique au service d'un objectif simple, mesurer le niveau d'un joueur à
 partir de ses résultats.
@@ -81,18 +76,15 @@ partir de ses résultats.
 
 Avant le match, on calcule la probabilité que le joueur A batte le joueur B en
 fonction de leur écart d'Elo :
-"""
-)
+""")
 
 st.latex(r"P(A \text{ bat } B) = \frac{1}{1 + 10^{(Elo_B - Elo_A) / 400}}")
 
-st.markdown(
-    """
+st.markdown("""
 Le facteur **400** est une constante historique choisie par Arpad Elo. Elle
 signifie qu'un écart de 400 points correspond à un rapport de force de 10 contre 1,
 soit une probabilité de victoire de **91 %** pour le favori.
-"""
-)
+""")
 
 st.info(
     "**Exemple concret** — Alcaraz est noté 2150 Elo, Djokovic 2080 Elo. "
@@ -102,13 +94,11 @@ st.info(
 
 # ── Section 3 — Facteur K ────────────────────────────────────────────────────
 section("3. Le facteur K : régler la vitesse d'apprentissage", level=2, divider_before=True)
-st.markdown(
-    """
+st.markdown("""
 Le **facteur K** détermine la vitesse à laquelle le rating Elo s'ajuste après
 chaque match. C'est le paramètre central à calibrer : un K élevé rend le rating
 nerveux et réactif, un K faible le rend stable mais lent à réagir.
-"""
-)
+""")
 
 df_k = pd.DataFrame(
     {
@@ -124,8 +114,7 @@ df_k = pd.DataFrame(
 )
 df_styled(df_k)
 
-st.markdown(
-    """
+st.markdown("""
 ### L'approche adaptative
 
 Dans notre projet, nous utilisons un **K adaptatif** : 40 pour les nouveaux
@@ -136,13 +125,11 @@ stabilité statistique.
 **Bonus Best-of-5 :** les matchs en trois sets gagnants (Grands Chelems) pèsent
 1,1× plus que les matchs en deux sets gagnants, car ils sont plus représentatifs
 du niveau réel.
-"""
-)
+""")
 
 # ── Section 4 — Elo par surface ──────────────────────────────────────────────
 section("4. L'Elo par surface : un raffinement essentiel", level=2, divider_before=True)
-st.markdown(
-    """
+st.markdown("""
 Le tennis est unique parmi les sports majeurs : un même joueur peut être
 **excellent sur une surface et médiocre sur une autre**. Un Elo unique gommerait
 cette spécificité fondamentale du sport.
@@ -155,8 +142,7 @@ probabilité, signifie que Nadal gagnait environ **85 %** de ses matchs sur terr
 contre seulement **50 %** sur gazon, face au même type d'adversaire.
 
 C'est pourquoi notre projet calcule **quatre ratings Elo en parallèle** :
-"""
-)
+""")
 
 df_surf = pd.DataFrame(
     {
@@ -210,14 +196,12 @@ st.caption(
 
 # ── Section 6 — Décroissance d'inactivité ────────────────────────────────────
 section("6. Décroissance d'inactivité", level=2, divider_before=True)
-st.markdown(
-    """
+st.markdown("""
 Quand un joueur ne joue pas pendant **plus de 6 mois** (blessure, retraite
 temporaire), son rating Elo glisse progressivement vers la valeur de base 1500,
 suivant une décroissance exponentielle. Cela évite qu'un joueur absent conserve
 indéfiniment un rating élevé qui ne reflète plus son niveau actuel.
-"""
-)
+""")
 
 # ── Section 7 — Implémentation Python ────────────────────────────────────────
 section("7. Implémentation Python simplifiée", level=2, divider_before=True)
@@ -240,24 +224,20 @@ st.code(
     language="python",
 )
 
-st.markdown(
-    """
+st.markdown("""
 Pour construire le rating Elo complet de tous les joueurs ATP et WTA, il suffit
 ensuite d'appliquer cette fonction en boucle sur tous les matchs, par ordre
 chronologique. Chaque joueur démarre à 1500 et son rating évolue au fil des
 résultats.
-"""
-)
+""")
 
 # ── Section 8 — Pour aller plus loin ─────────────────────────────────────────
 section("8. Pour aller plus loin", level=2, divider_before=True)
-st.markdown(
-    """
+st.markdown("""
 - **FiveThirtyEight** — Méthodologie complète de leur modèle Elo tennis publiée en ligne.
 - **Tennis Abstract** *(Jeff Sackmann)* — Articles techniques sur les ratings tennis et leurs limites.
 - **Betfair Hub** — Article *Tennis Elo Modelling*, référence pratique pour l'application au tennis.
 - **Glicko et Glicko-2** *(Mark Glickman)* — Évolution moderne de l'Elo intégrant l'incertitude du rating.
-"""
-)
+""")
 
 st.caption("*Tennis Analytics Platform — Document de référence interne · Projet personnel*")
