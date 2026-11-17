@@ -1,9 +1,32 @@
+# Thème : un vert « court » sobre, des neutres froids, coins arrondis.
+# Les sections [theme.light] et [theme.dark] laissent chaque visiteur choisir
+# (menu ⋮ → Settings) ; Streamlit suit par défaut le réglage du système.
+# Contrastes vérifiés (WCAG AA) : texte ≥ 7:1, primaire ≥ 4.5:1 sur le fond.
+
 [theme]
-primaryColor = "#3A7D44"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+headingFontWeights = [700, 650, 600, 600, 600, 600]
+baseRadius = "0.6rem"
+buttonRadius = "0.6rem"
+showWidgetBorder = true
+
+[theme.light]
+primaryColor = "#1B7A4B"
 backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F7FAF7"
-textColor = "#2A2A2A"
-font = "sans serif"
+secondaryBackgroundColor = "#F3F6F4"
+textColor = "#14201A"
+borderColor = "#DDE5E0"
+linkColor = "#1B7A4B"
+dataframeHeaderBackgroundColor = "#F3F6F4"
+
+[theme.dark]
+primaryColor = "#4CC38A"
+backgroundColor = "#0E1411"
+secondaryBackgroundColor = "#18211C"
+textColor = "#E6EEE9"
+borderColor = "#2A362F"
+linkColor = "#6FD3A2"
+dataframeHeaderBackgroundColor = "#18211C"
 
 [server]
 headless = true
@@ -17,3 +40,5 @@ gatherUsageStats = false
 [client]
 # Pas de trace d'erreur détaillée côté navigateur en production (app publique).
 showErrorDetails = false
+# Navigation gérée par st.navigation (app/Home.py), pas par le dossier pages/.
+showSidebarNavigation = false

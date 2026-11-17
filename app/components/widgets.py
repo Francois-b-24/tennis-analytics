@@ -1,24 +1,20 @@
-"""Widgets Streamlit réutilisables (sélecteurs, formatage FR, composants UI).
+"""Composants UI partagés (sélecteurs, formatage FR, mise en page).
 
-Composants UI obligatoires (dashboard pro) — à utiliser plutôt que les éléments
-natifs Streamlit bruts :
+Composants obligatoires — à préférer aux éléments Streamlit bruts :
 
-- :func:`page_header` — entête de page (titre + sous-titre) ; remplace
-  `st.title()`.
-- :func:`kpi_row` — ligne de KPI cards homogènes ; remplace
-  `st.columns(...)` + `st.metric(...)` recopiés.
-- :func:`section` — section avec divider doux optionnel ; remplace
-  `st.subheader()` brut.
-- :func:`card` — context manager pour grouper visuellement un bloc.
-- :func:`df_styled` — wrapper :func:`st.dataframe` avec auto-détection des
-  `column_config` (Elo, dates, pourcentages, rang, drapeaux IOC).
+- :func:`page_header` — titre + sous-titre de page (remplace `st.title`) ;
+- :func:`kpi_row` — ligne d'indicateurs (`st.metric` bordés, aide accessible
+  au clavier) ;
+- :func:`section` — titre de section (hiérarchie h2/h3 respectée) ;
+- :func:`df_styled` — `st.dataframe` avec `column_config` auto (Elo, rang,
+  pourcentages, durées, dates) ;
+- :func:`circuit_selectbox` — choix du circuit commun à toutes les pages.
 """
 
 from __future__ import annotations
 
 import html
 import re
-from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -197,84 +193,6 @@ def format_percent(value: float | None, digits: int = 1) -> str:
     return f"{pct:.{digits}f}".replace(".", ",") + " %"
 
 
-def load_player_options(connection: duckdb.DuckDBPyConnection) -> pd.DataFrame:
-    """Retourne la liste des joueurs disponibles (id + nom)."""
-    try:
-        frame = connection.execute("""
-            SELECT player_id, full_name
-            FROM v_player_names
-            WHERE TRIM(full_name) <> ''
-            ORDER BY full_name;
-            """).df()
-        if not frame.empty:
-            return frame.drop_duplicates(subset=["full_name"])
-    except duckdb.Error:
-        pass
-    frame = connection.execute("""
-        SELECT DISTINCT winner_id AS player_id, winner_name AS full_name
-        FROM v_matches
-        ORDER BY full_name;
-        """).df()
-    return frame.drop_duplicates(subset=["full_name"])
-
-
-def load_active_players(
-    connection: duckdb.DuckDBPyConnection,
-    circuit: str | None = None,
-    min_matches: int = 10,
-) -> pd.DataFrame:
-    """Retourne les joueurs ayant disputé au moins `min_matches` matchs.
-
-    Pré-filtre la liste pour rendre la recherche utilisable (sinon plus de
-    100k joueurs Sackmann incluent des juniors et qualifiés inconnus).
-
-    Args:
-        connection: Connexion DuckDB active.
-        circuit: 'ATP', 'WTA' ou None ('Tous').
-        min_matches: Seuil minimum de matchs joués (winner_id + loser_id).
-
-    Returns:
-        DataFrame avec player_id, full_name, ioc, total_matches, last_match_date.
-    """
-    circuit_clause = ""
-    params: list[Any] = [min_matches]
-    if circuit in ("ATP", "WTA"):
-        circuit_clause = "AND m.circuit = ?"
-        params.insert(0, circuit)
-
-    sql = f"""
-        WITH counts AS (
-            SELECT player_id, COUNT(*) AS total_matches, MAX(tourney_date) AS last_match_date
-            FROM (
-                SELECT winner_id AS player_id, tourney_date, circuit FROM v_matches
-                UNION ALL
-                SELECT loser_id  AS player_id, tourney_date, circuit FROM v_matches
-            ) m
-            WHERE 1=1 {circuit_clause}
-            GROUP BY player_id
-            HAVING COUNT(*) >= ?
-        )
-        SELECT
-            c.player_id,
-            TRIM(CONCAT(COALESCE(ANY_VALUE(p.name_first), ''), ' ',
-                        COALESCE(ANY_VALUE(p.name_last), ''))) AS full_name,
-            ANY_VALUE(p.ioc) AS ioc,
-            c.total_matches,
-            c.last_match_date
-        FROM counts c
-        LEFT JOIN v_players p ON c.player_id = p.player_id
-        GROUP BY c.player_id, c.total_matches, c.last_match_date
-        HAVING TRIM(full_name) <> ''
-        ORDER BY full_name
-    """
-    try:
-        return connection.execute(sql, params).df()
-    except duckdb.Error:
-        return pd.DataFrame(
-            columns=["player_id", "full_name", "ioc", "total_matches", "last_match_date"]
-        )
-
-
 def _is_valid_player_name(name: str) -> bool:
     """Filtre les noms de joueurs incomplets ou corrompus.
 
@@ -360,9 +278,10 @@ def player_selectbox(
     options: pd.DataFrame,
     key: str,
     *,
-    help_text: str | None = "💡 Tapez pour rechercher",
+    help_text: str | None = "Tapez pour rechercher",
     placeholder: str = "Rechercher un joueur…",
     default_index: int = 0,
+    default_player_id: int | None = None,
 ) -> int | None:
     """Sélecteur Streamlit searchable basé sur une liste de joueurs.
 
@@ -376,6 +295,8 @@ def player_selectbox(
         help_text: Tooltip affiché à côté du label (None pour le retirer).
         placeholder: Texte affiché quand rien n'est sélectionné (Streamlit 1.30+).
         default_index: Index par défaut (0 = premier joueur après tri alphabétique).
+        default_player_id: Joueur présélectionné (prioritaire sur `default_index`),
+            typiquement le n°1 Elo du circuit plutôt que le premier nom alphabétique.
 
     Returns:
         `player_id` sélectionné, ou None si la liste est vide.
@@ -392,6 +313,10 @@ def player_selectbox(
 
     mapping = dict(zip(options["label"], options["player_id"], strict=False))
     labels = list(mapping.keys())
+    if default_player_id is not None:
+        ids = list(mapping.values())
+        if default_player_id in ids:
+            default_index = ids.index(default_player_id)
     choice = st.selectbox(
         label,
         labels,
@@ -446,9 +371,11 @@ def format_elo(value: float | None) -> str:
 
 _ALLOWED_CIRCUITS = frozenset({"ATP", "WTA", "Tous", "TOUS", "all", "ALL", ""})
 
-# Liste canonique des circuits proposés dans les selectbox.
-# `Tous` en premier : valeur par défaut cohérente entre toutes les pages.
+# Liste canonique des circuits proposés. `Tous` en premier : valeur par défaut.
 CIRCUITS: tuple[str, ...] = ("Tous", "ATP", "WTA")
+
+#: Clé de session (et paramètre d'URL) du circuit choisi, partagée par les pages.
+CIRCUIT_KEY = "circuit"
 
 
 def circuit_selectbox(
@@ -457,24 +384,51 @@ def circuit_selectbox(
     default: str = "Tous",
     key: str | None = None,
     include_all: bool = True,
+    location: Any = None,
 ) -> str:
-    """Selectbox circuit unifié et cohérent entre toutes les pages.
+    """Choix du circuit, **commun à toutes les pages** de la session.
+
+    Le choix est conservé en changeant de page et reflété dans l'URL
+    (`?circuit=WTA`), donc partageable. Les pages qui exigent un circuit
+    unique (`include_all=False`) ramènent « Tous » à « ATP ».
 
     Args:
-        label: Libellé affiché (par défaut "Circuit").
+        label: Libellé (masqué visuellement, lu par les lecteurs d'écran).
         default: Valeur initiale parmi `CIRCUITS`.
-        key: Clé Streamlit (auto si None).
-        include_all: Si False, retire 'Tous' (cas pages où c'est exclusif ATP/WTA).
+        key: Ignoré (compatibilité) : la clé est toujours :data:`CIRCUIT_KEY`.
+        include_all: Si False, « Tous » n'est pas une valeur acceptée.
+        location: Conteneur Streamlit (par défaut, la barre latérale).
 
     Returns:
         Valeur sélectionnée, garantie dans l'allowlist.
     """
-    options: tuple[str, ...] = (
-        CIRCUITS if include_all else tuple(c for c in CIRCUITS if c != "Tous")
+    del key
+    container = location if location is not None else st.sidebar
+    if CIRCUIT_KEY not in st.session_state and default in CIRCUITS:
+        st.session_state[CIRCUIT_KEY] = default
+    choice = container.segmented_control(
+        label,
+        CIRCUITS,
+        key=CIRCUIT_KEY,
+        required=True,
+        bind="query-params",
+        persist_state="session",
+        width="stretch",
     )
-    if default not in options:
-        default = options[0]
-    return st.sidebar.selectbox(label, options, index=options.index(default), key=key)
+    value = choice if choice in CIRCUITS else default
+    if not include_all and value == "Tous":
+        return "ATP"
+    return value
+
+
+def current_circuit(*, include_all: bool = True) -> str:
+    """Circuit actuellement choisi (sans afficher de widget)."""
+    value = st.session_state.get(CIRCUIT_KEY, "Tous")
+    if value not in CIRCUITS:
+        value = "Tous"
+    if not include_all and value == "Tous":
+        return "ATP"
+    return value
 
 
 def circuit_filter_sql(circuit: str) -> str:
@@ -503,342 +457,19 @@ def circuit_filter_sql(circuit: str) -> str:
 
 
 def inject_global_css() -> None:
-    """Injecte le CSS global responsive tennis (à appeler une fois par page)."""
+    """Ajustements CSS minimes, indépendants du thème clair/sombre.
+
+    Tout le reste (couleurs, polices, rayons) vient de `.streamlit/config.toml`.
+    Aucune couleur codée en dur, aucun sélecteur interne fragile.
+    """
     st.markdown(
         """
         <style>
-        /* ── Variables racine (dashboard pro) ───────────────────────────── */
-        :root {
-            --tennis-hard: #1F4E79;
-            --tennis-clay: #C27940;
-            --tennis-green: #3A7D44;
-            --tennis-line: #2F2F2F;
-            --gray-900: #1f2937;
-            --gray-600: #4b5563;
-            --gray-500: #6b7280;
-            --gray-400: #9ca3af;
-            --gray-200: #eaecef;
-            --gray-100: #f3f4f6;
-            --bg-card: #ffffff;
-            --radius: 10px;
-            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
-            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-        }
-
-        /* ── Container principal : marges resserrées dashboard ──────────── */
-        .block-container {
-            padding-top: 1.5rem !important;
-            padding-bottom: 3rem !important;
-            max-width: 1200px;
-        }
-
-        /* ── Typographie titres (letter-spacing serré, look pro) ────────── */
-        h1, h2, h3 {
-            letter-spacing: -0.015em;
-            color: var(--gray-900);
-        }
-        h2, h3 {
-            font-weight: 650;
-        }
-
-        /* ── Page header (titre + sous-titre) ───────────────────────────── */
-        .page-header {
-            margin: 0 0 1.25rem 0;
-        }
-        .page-header h1 {
-            font-size: 1.85rem;
-            font-weight: 700;
-            margin: 0 0 4px 0;
-            line-height: 1.2;
-        }
-        .page-header .page-subtitle {
-            color: var(--gray-500);
-            font-size: 0.98rem;
-            line-height: 1.55;
-            margin: 0;
-        }
-
-        /* ── KPI cards (look dashboard moderne) ─────────────────────────── */
-        .kpi-card {
-            background: var(--bg-card);
-            border: 1px solid var(--gray-200);
-            border-radius: var(--radius);
-            padding: 14px 16px;
-            box-shadow: var(--shadow-sm);
-            transition: transform 0.15s ease, box-shadow 0.15s ease;
-            height: 100%;
-            box-sizing: border-box;
-        }
-        .kpi-card:hover {
-            transform: translateY(-1px);
-            box-shadow: var(--shadow-md);
-        }
-        .kpi-card .kpi-label {
-            font-size: 0.72rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--gray-500);
-            font-weight: 600;
-            margin-bottom: 6px;
-        }
-        .kpi-card .kpi-value {
-            font-size: 1.6rem;
-            font-weight: 700;
-            letter-spacing: -0.02em;
-            color: var(--gray-900);
-            line-height: 1.2;
-        }
-        .kpi-card .kpi-delta {
-            font-size: 0.78rem;
-            margin-top: 4px;
-            color: var(--gray-500);
-        }
-        .kpi-card .kpi-delta.delta-up { color: var(--tennis-green); }
-        .kpi-card .kpi-delta.delta-down { color: #b54848; }
-
-        /* ── Surcharge st.metric pour le même look que kpi-card ─────────── */
-        [data-testid="stMetric"] {
-            background: var(--bg-card);
-            border: 1px solid var(--gray-200);
-            border-radius: var(--radius);
-            padding: 14px 16px;
-            box-shadow: var(--shadow-sm);
-            transition: transform 0.15s ease, box-shadow 0.15s ease;
-        }
-        [data-testid="stMetric"]:hover {
-            transform: translateY(-1px);
-            box-shadow: var(--shadow-md);
-        }
-        [data-testid="stMetricLabel"] {
-            color: var(--gray-500) !important;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            font-size: 0.72rem !important;
-            font-weight: 600 !important;
-        }
-        [data-testid="stMetricValue"] {
-            font-weight: 700 !important;
-            letter-spacing: -0.02em;
-            color: var(--gray-900);
-        }
-
-        /* ── Soft divider (plus discret que st.divider) ─────────────────── */
-        .soft-divider {
-            border: none;
-            border-top: 1px solid var(--gray-200);
-            margin: 1.25rem 0;
-        }
-
-        /* ── Containers avec bordure (cards via st.container(border=True)) */
-        [data-testid="stVerticalBlockBorderWrapper"] {
-            border-radius: var(--radius) !important;
-            border-color: var(--gray-200) !important;
-            box-shadow: var(--shadow-sm);
-        }
-
-        /* ── Tooltip Elo (déplacé depuis Home.py inline style) ──────────── */
-        .elo-tooltip {
-            position: relative;
-            display: inline-block;
-            color: var(--tennis-green);
-            font-weight: 600;
-            border-bottom: 1px dashed var(--tennis-green);
-            cursor: help;
-        }
-        .elo-tooltip .elo-tip {
-            visibility: hidden;
-            opacity: 0;
-            width: 300px;
-            background: #1e2d24;
-            color: #f0f7f2;
-            font-size: 0.82rem;
-            line-height: 1.6;
-            border-radius: 8px;
-            padding: 12px 14px;
-            position: absolute;
-            bottom: calc(100% + 8px);
-            left: 50%;
-            transform: translateX(-50%);
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
-            transition: opacity 0.2s ease;
-            z-index: 9999;
-            pointer-events: none;
-        }
-        .elo-tooltip .elo-tip::after {
-            content: "";
-            position: absolute;
-            top: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            border: 6px solid transparent;
-            border-top-color: #1e2d24;
-        }
-        .elo-tooltip:hover .elo-tip {
-            visibility: visible;
-            opacity: 1;
-        }
-
-        /* ── Anti-débordement horizontal global ─────────────────────────── */
-        html, body, [data-testid="stAppViewContainer"], .main, .stApp {
-            overflow-x: hidden !important;
-            max-width: 100vw !important;
-        }
-
-        /* ── Charts Plotly : 100% largeur + hauteur minimale ─────────────── */
-        .js-plotly-plot, .plotly, .plotly-graph-div {
-            max-width: 100% !important;
-            width: 100% !important;
-        }
-        [data-testid="stPlotlyChart"] {
-            max-width: 100% !important;
-            overflow: hidden !important;
-        }
-
-        /* ── Encart info-band : largeur sûre ────────────────────────────── */
-        .info-band {
-            background: linear-gradient(135deg, #f4f9f5 0%, #eaf3ec 100%);
-            border-left: 4px solid var(--tennis-green);
-            border-radius: 0 8px 8px 0;
-            padding: 12px 16px;
-            margin-bottom: 16px;
-            color: #3a3a3a;
-            font-size: 0.92rem;
-            line-height: 1.6;
-            max-width: 100% !important;
-            box-sizing: border-box !important;
-            word-wrap: break-word !important;
-            overflow-wrap: break-word !important;
-        }
-
-        /* ── Tableaux markdown : scroll horizontal au besoin ────────────── */
-        .main table {
-            display: block !important;
-            overflow-x: auto !important;
-            max-width: 100% !important;
-            -webkit-overflow-scrolling: touch !important;
-        }
-
-        /* ── Blocs de code : pas de débordement ─────────────────────────── */
-        .main pre, .main code {
-            white-space: pre-wrap !important;
-            word-wrap: break-word !important;
-            overflow-wrap: break-word !important;
-            max-width: 100% !important;
-        }
-
-        /* ── Mobile (< 768px) ───────────────────────────────────────────── */
-        @media (max-width: 768px) {
-
-            /* Empile toutes les colonnes en vertical */
-            [data-testid="stHorizontalBlock"] {
-                flex-direction: column !important;
-                gap: 0.5rem !important;
-            }
-            [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
-                width: 100% !important;
-                flex: 1 1 100% !important;
-                min-width: 0 !important;
-                max-width: 100% !important;
-            }
-
-            /* Padding réduit + largeur 100 % */
-            .main .block-container,
-            section.main > div.block-container,
-            [data-testid="stAppViewContainer"] .main .block-container,
-            [data-testid="stMain"] .block-container {
-                padding-left: 0.75rem !important;
-                padding-right: 0.75rem !important;
-                padding-top: 1rem !important;
-                max-width: 100% !important;
-                width: 100% !important;
-            }
-
-            /* Conteneurs internes : strictement contenus */
-            [data-testid="stHorizontalBlock"],
-            [data-testid="stVerticalBlock"] {
-                width: 100% !important;
-                max-width: 100% !important;
-                box-sizing: border-box !important;
-            }
-
-            /* Sidebar masquée par défaut */
-            [data-testid="stSidebar"] {
-                min-width: 0 !important;
-            }
-
-            /* Métriques : texte plus petit pour éviter le wrap moche */
-            [data-testid="stMetricValue"] {
-                font-size: 1.05rem !important;
-                word-break: break-word !important;
-            }
-            [data-testid="stMetricLabel"] {
-                font-size: 0.78rem !important;
-            }
-            [data-testid="stMetricDelta"] {
-                font-size: 0.72rem !important;
-            }
-
-            /* Dataframes scrollables */
-            [data-testid="stDataFrame"] {
-                overflow-x: auto !important;
-                max-width: 100% !important;
-            }
-
-            /* Titres réduits */
-            h1 { font-size: 1.5rem !important; line-height: 1.2 !important; }
-            h2 { font-size: 1.25rem !important; }
-            h3 { font-size: 1.05rem !important; }
-            h4 { font-size: 0.95rem !important; }
-
-            /* Encart info-band en mobile : padding plus fin */
-            .info-band {
-                padding: 10px 12px !important;
-                font-size: 0.88rem !important;
-            }
-
-            /* Tableaux markdown : police plus petite sur mobile */
-            .main table {
-                font-size: 0.82rem !important;
-            }
-            .main th, .main td {
-                padding: 6px 8px !important;
-            }
-
-            /* st.dataframe (tableaux natifs) : conteneurs strictement bornés */
-            [data-testid="stDataFrame"],
-            [data-testid="stDataFrame"] > div,
-            [data-testid="stDataFrame"] iframe {
-                max-width: 100% !important;
-                width: 100% !important;
-            }
-
-            /* Charts Plotly : hauteur minimale lisible sur mobile */
-            [data-testid="stPlotlyChart"] {
-                min-height: 320px !important;
-            }
-            .js-plotly-plot, .plotly-graph-div {
-                min-height: 320px !important;
-            }
-
-            /* Code blocks : ne pas déborder */
-            [data-testid="stCodeBlock"] pre,
-            [data-testid="stCodeBlock"] code {
-                font-size: 0.78rem !important;
-                white-space: pre !important;
-                overflow-x: auto !important;
-                max-width: 100% !important;
-            }
-        }
-
-        /* ── Tooltip Elo : reste dans le viewport ───────────────────────── */
-        @media (max-width: 500px) {
-            .elo-tooltip .elo-tip {
-                width: 80vw !important;
-                max-width: 280px !important;
-                left: 50% !important;
-                transform: translateX(-50%) !important;
-                font-size: 0.78rem !important;
-            }
+        .block-container { padding-top: 2.2rem; max-width: 1200px; }
+        h1 { letter-spacing: -0.02em; }
+        .page-subtitle { opacity: .72; margin: -.4rem 0 1.2rem; font-size: 1.02rem; }
+        @media (max-width: 640px) {
+            .block-container { padding-left: 1rem; padding-right: 1rem; }
         }
         </style>
         """,
@@ -863,79 +494,54 @@ def load_model_bundle(model_path: str, cache_key: str = "") -> dict | None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Composants UI dashboard pro (page_header, kpi_row, section, card, df_styled)
+# Composants de mise en page
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 def page_header(title: str, subtitle: str | None = None, icon: str | None = None) -> None:
-    """Entête de page unifié (titre + sous-titre optionnel) — look dashboard pro.
-
-    Remplace `st.title(...)`. Toutes les valeurs interpolées sont échappées HTML.
+    """Titre de page (h1) et sous-titre facultatif.
 
     Args:
-        title: Titre principal de la page.
-        subtitle: Sous-titre descriptif (facultatif).
-        icon: Emoji ou symbole affiché devant le titre (facultatif).
+        title: Titre principal.
+        subtitle: Phrase d'introduction (facultatif).
+        icon: Ignoré (les titres n'ont plus d'emoji, lus à voix haute par les
+            lecteurs d'écran) ; conservé pour compatibilité.
     """
-    safe_title = html.escape(str(title))
-    icon_html = f"{html.escape(icon)} " if icon else ""
-    subtitle_html = f'<p class="page-subtitle">{html.escape(str(subtitle))}</p>' if subtitle else ""
-    st.markdown(
-        f"""
-        <div class="page-header">
-            <h1>{icon_html}{safe_title}</h1>
-            {subtitle_html}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    del icon
+    st.title(title, anchor=False)
+    if subtitle:
+        st.markdown(
+            f'<p class="page-subtitle">{html.escape(str(subtitle))}</p>',
+            unsafe_allow_html=True,
+        )
 
 
 def kpi_row(metrics: list[dict[str, Any]], columns: int | None = None) -> None:
-    """Affiche une ligne de KPI cards homogènes.
+    """Ligne d'indicateurs homogènes (`st.metric` bordés).
 
-    Chaque dict accepte les clés ``label`` (str, obligatoire), ``value`` (any,
-    obligatoire), ``delta`` (str optionnel), ``delta_dir`` ('up'/'down'/'neutral',
-    optionnel — colore le delta), ``help`` (tooltip optionnel), ``icon`` (emoji
-    optionnel devant le label).
+    Chaque dict accepte ``label`` et ``value`` (obligatoires), ``delta``,
+    ``delta_dir`` ('up'/'down'/'neutral'), ``help`` (infobulle accessible au
+    clavier) ; ``icon`` est ignoré (plus d'emoji dans les libellés).
 
     Args:
-        metrics: Liste de dicts décrivant chaque KPI.
-        columns: Nombre forcé de colonnes (par défaut, autant que de métriques).
+        metrics: Liste de dicts décrivant chaque indicateur.
+        columns: Nombre forcé de colonnes (par défaut, autant que d'indicateurs).
     """
     if not metrics:
         return
     n = columns or len(metrics)
     cols = st.columns(n)
     for i, m in enumerate(metrics):
-        col = cols[i % n]
-        label_raw = str(m.get("label", ""))
-        icon = m.get("icon")
-        label_html = (
-            f"{html.escape(icon)} {html.escape(label_raw)}" if icon else html.escape(label_raw)
-        )
-        value_html = html.escape(str(m.get("value", "—")))
-        delta_html = ""
-        if m.get("delta"):
-            direction = str(m.get("delta_dir", "neutral")).lower()
-            delta_class = {
-                "up": "delta-up",
-                "down": "delta-down",
-            }.get(direction, "")
-            delta_html = (
-                f'<div class="kpi-delta {delta_class}">{html.escape(str(m["delta"]))}</div>'
-            )
-        help_attr = f' title="{html.escape(str(m["help"]))}"' if m.get("help") else ""
-        with col:
-            st.markdown(
-                f"""
-                <div class="kpi-card"{help_attr}>
-                    <div class="kpi-label">{label_html}</div>
-                    <div class="kpi-value">{value_html}</div>
-                    {delta_html}
-                </div>
-                """,
-                unsafe_allow_html=True,
+        direction = str(m.get("delta_dir", "neutral")).lower()
+        delta_color = {"up": "normal", "down": "normal"}.get(direction, "off")
+        with cols[i % n]:
+            st.metric(
+                label=str(m.get("label", "")),
+                value=str(m.get("value", "—")),
+                delta=m.get("delta"),
+                delta_color=delta_color,
+                help=m.get("help"),
+                border=True,
             )
 
 
@@ -945,62 +551,45 @@ def section(
     level: int = 2,
     divider_before: bool = False,
     anchor: str | None = None,
+    caption: str | None = None,
 ) -> None:
-    """Affiche un titre de section unifié (avec divider doux optionnel).
+    """Titre de section (h2 par défaut, h3 pour une sous-section).
 
     Args:
         title: Texte du titre.
-        level: Niveau de titre HTML (2 = h2 par défaut, 3 = h3, …).
-        divider_before: Si True, insère un `<hr class="soft-divider"/>` au-dessus.
-        anchor: Identifiant HTML ancre stable (slug auto sinon).
+        level: 2 (section) ou 3 (sous-section).
+        divider_before: Si True, insère un séparateur au-dessus.
+        anchor: Ancre stable (slug automatique sinon).
+        caption: Phrase explicative courte sous le titre (facultatif).
     """
     if divider_before:
-        st.markdown('<hr class="soft-divider"/>', unsafe_allow_html=True)
-    level = max(2, min(level, 6))
-    safe_title = html.escape(str(title))
+        st.divider()
     if anchor is None:
         anchor = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "section"
-    st.markdown(
-        f'<h{level} id="{html.escape(anchor)}">{safe_title}</h{level}>',
-        unsafe_allow_html=True,
-    )
-
-
-@contextmanager
-def card(*, border: bool = True):
-    """Context manager pour grouper visuellement un bloc (card avec ombre).
-
-    Usage :
-
-        with card():
-            st.write("Contenu groupé")
-
-    Args:
-        border: Si True, utilise `st.container(border=True)` (style override
-            via CSS pour l'ombre et le radius).
-    """
-    container = st.container(border=border)
-    with container:
-        yield container
+    if level <= 2:
+        st.header(title, anchor=anchor, divider=False)
+    else:
+        st.subheader(title, anchor=anchor, divider=False)
+    if caption:
+        st.caption(caption)
 
 
 def _auto_column_config(df: pd.DataFrame) -> dict[str, Any]:
     """Détecte automatiquement les `column_config` pour les colonnes connues.
 
-    Détection (priorité de gauche à droite) :
-    - col contenant ``elo`` → NumberColumn format entier
-    - col contenant ``rang`` ou ``rank`` → NumberColumn format ``#%d``
-    - col contenant ``pct`` / ``taux`` / ``winrate`` / ``%`` → ProgressColumn 0 a 100
-    - col contenant ``minutes`` / ``durée`` / ``duree`` → NumberColumn ``%d min``
-    - col == ``date`` ou contenant ``date`` → DateColumn DD/MM/YYYY (best-effort)
-
-    Returns:
-        Dict prêt à passer en `column_config` à `st.dataframe`.
+    - ``elo`` → entier ;
+    - ``rang`` / ``rank`` → ``#n`` ;
+    - ``pct`` / ``taux`` / ``winrate`` / ``%`` → barre de progression de 0 à 100 ;
+    - ``minutes`` / ``durée`` → ``n min`` ;
+    - ``année`` / ``year`` → entier sans séparateur ;
+    - colonnes de type date → ``JJ/MM/AAAA``.
     """
     config: dict[str, Any] = {}
     for col in df.columns:
         name = str(col).lower()
-        if "elo" in name:
+        if pd.api.types.is_datetime64_any_dtype(df[col]):
+            config[col] = st.column_config.DateColumn(format="DD/MM/YYYY")
+        elif "elo" in name:
             config[col] = st.column_config.NumberColumn(format="%d")
         elif "rang" in name or name == "rank" or name.endswith("_rank"):
             config[col] = st.column_config.NumberColumn(format="#%d")
@@ -1010,7 +599,7 @@ def _auto_column_config(df: pd.DataFrame) -> dict[str, Any]:
             )
         elif "minutes" in name or "duree" in name or "durée" in name:
             config[col] = st.column_config.NumberColumn(format="%d min")
-        elif name == "annee" or name == "année" or name == "year":
+        elif name in ("annee", "année", "year", "saison"):
             config[col] = st.column_config.NumberColumn(format="%d")
     return config
 
@@ -1023,18 +612,14 @@ def df_styled(
     hide_index: bool = True,
     use_container_width: bool = True,
 ) -> None:
-    """Wrapper :func:`st.dataframe` avec column_config auto-détecté.
-
-    L'auto-détection couvre les colonnes Elo, rang, pourcentages, durées et
-    années (cf. :func:`_auto_column_config`). Le `column_config` fourni
-    par l'appelant a priorité sur l'auto-détection.
+    """Wrapper :func:`st.dataframe` avec `column_config` auto-détecté.
 
     Args:
         df: DataFrame à afficher.
         column_config: Overrides explicites (priorité sur l'auto-détection).
-        height: Hauteur en pixels (Streamlit décide si None).
-        hide_index: Masque l'index pandas par défaut.
-        use_container_width: Étend à la largeur du container.
+        height: Hauteur en pixels (automatique si None).
+        hide_index: Masque l'index pandas.
+        use_container_width: Étend à la largeur du conteneur.
     """
     merged = _auto_column_config(df)
     if column_config:
@@ -1042,7 +627,154 @@ def df_styled(
     st.dataframe(
         df,
         column_config=merged if merged else None,
-        height=height if height else "auto",
+        height=height if height else _fit_height(len(df)),
         hide_index=hide_index,
         width="stretch" if use_container_width else "content",
     )
+
+
+def _fit_height(rows: int, max_rows: int = 25) -> int | str:
+    """Hauteur affichant toutes les lignes d'un petit tableau (sans ascenseur interne)."""
+    if rows > max_rows:
+        return "auto"
+    return 35 * (rows + 1) + 3
+
+
+def mark_provisional(scores: pd.Series, sources: pd.Series) -> pd.Series:
+    """Ajoute un astérisque aux scores des résultats provisoires (source ESPN)."""
+    return scores.fillna("").astype(str) + sources.map(lambda s: " *" if s == "espn" else "")
+
+
+PROVISIONAL_NOTE = (
+    "* Résultat provisoire (source ESPN), confirmé à la prochaine publication de "
+    "tennis-data.co.uk."
+)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Libellés et petits formats
+# ─────────────────────────────────────────────────────────────────────────────
+
+SURFACE_FR: dict[str, str] = {
+    "hard": "Dur",
+    "clay": "Terre battue",
+    "grass": "Gazon",
+    "Hard": "Dur",
+    "Clay": "Terre battue",
+    "Grass": "Gazon",
+    "Carpet": "Moquette",
+}
+
+LEVEL_FR: dict[str, str] = {
+    "G": "Grand Chelem",
+    "M": "Masters 1000",
+    "PM": "WTA 1000",
+    "P": "WTA 500",
+    "I": "WTA 250",
+    "A": "ATP 250/500",
+    "F": "Masters de fin d'année",
+    "D": "Coupe Davis / BJK Cup",
+    "O": "Jeux olympiques",
+    "W": "ITF",
+}
+
+ROUND_FR: dict[str, str] = {
+    "F": "Finale",
+    "SF": "Demi-finale",
+    "QF": "Quart de finale",
+    "R16": "8e de finale",
+    "R32": "16e de finale",
+    "R64": "32e de finale",
+    "R128": "64e de finale",
+    "RR": "Poules",
+    "BR": "Match pour le bronze",
+}
+
+
+def surface_fr(value: object) -> str:
+    """Surface en français (`Hard` → `Dur`)."""
+    return SURFACE_FR.get(str(value), str(value) if value is not None else "—")
+
+
+def level_fr(value: object) -> str:
+    """Niveau de tournoi en clair (`G` → `Grand Chelem`)."""
+    return LEVEL_FR.get(str(value), str(value))
+
+
+def round_fr(value: object) -> str:
+    """Tour en français (`SF` → `Demi-finale`)."""
+    return ROUND_FR.get(str(value), str(value))
+
+
+def to_date(series: pd.Series) -> pd.Series:
+    """Convertit des entiers AAAAMMJJ en dates (pour `DateColumn`)."""
+    return pd.to_datetime(series.astype("Int64").astype(str), format="%Y%m%d", errors="coerce")
+
+
+def relative_age(moment: datetime, now: datetime | None = None) -> str:
+    """Ancienneté lisible (« il y a 2 h », « il y a 3 j »)."""
+    now = now or datetime.now(moment.tzinfo)
+    minutes = max(int((now - moment).total_seconds() // 60), 0)
+    if minutes < 60:
+        return f"il y a {minutes} min"
+    if minutes < 48 * 60:
+        return f"il y a {minutes // 60} h"
+    return f"il y a {minutes // (24 * 60)} j"
+
+
+MONTHS_FR = (
+    "janv.",
+    "févr.",
+    "mars",
+    "avr.",
+    "mai",
+    "juin",
+    "juil.",
+    "août",
+    "sept.",
+    "oct.",
+    "nov.",
+    "déc.",
+)
+
+
+def format_date_long(value: int | None) -> str:
+    """`20261116` → `16 nov. 2026`."""
+    if not value:
+        return "—"
+    try:
+        day = datetime.strptime(f"{int(value):08d}", "%Y%m%d")
+    except ValueError:
+        return str(value)
+    return f"{day.day} {MONTHS_FR[day.month - 1]} {day.year}"
+
+
+def freshness_panel(metadata: dict, location: Any = None) -> None:
+    """Encart « fraîcheur des données » (barre latérale par défaut).
+
+    Indique la date du dernier match par circuit, l'ancienneté de la dernière
+    mise à jour et le nombre de résultats provisoires (pas encore confirmés).
+    """
+    container = location if location is not None else st.sidebar
+    if not metadata:
+        return
+    last = metadata.get("last_match_date", {})
+    lines = [f"**{c}** · {format_date_long(d)}" for c, d in sorted(last.items())]
+    generated = metadata.get("generated_at")
+    updated = ""
+    if generated:
+        try:
+            updated = relative_age(datetime.fromisoformat(generated))
+        except ValueError:
+            updated = ""
+    with container.container(border=True):
+        st.markdown("**Derniers résultats**")
+        st.markdown("  \n".join(lines) or "—")
+        details = []
+        if updated:
+            details.append(f"Mise à jour {updated}")
+        provisional = int(metadata.get("provisional_matches") or 0)
+        if provisional:
+            details.append(f"{provisional} résultats provisoires")
+        if details:
+            st.caption(" · ".join(details))

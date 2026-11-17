@@ -1,4 +1,14 @@
-"""Thème Plotly tennis (surfaces) et application cohérente aux figures."""
+"""Thème Plotly de l'app : palette accessible et mise en page sobre.
+
+Les couleurs de texte, de fond et de grille ne sont **pas** codées en dur :
+`st.plotly_chart` applique le thème Streamlit actif (clair ou sombre). Ce
+module ne fixe que ce qui porte du sens : couleurs par surface et par
+circuit, marges, légende et infobulles.
+
+Palette surfaces : Okabe-Ito (distinguable par les daltoniens). Pour ne pas
+dépendre de la seule couleur, les séries par surface utilisent aussi des
+tirets différents (:data:`SURFACE_DASH`).
+"""
 
 from __future__ import annotations
 
@@ -6,108 +16,92 @@ from typing import Final
 
 import plotly.graph_objects as go
 
-TENNIS_GREEN: Final[str] = "#3A7D44"
-TENNIS_CLAY: Final[str] = "#C27940"
-TENNIS_HARD: Final[str] = "#1F4E79"
-TENNIS_LINE: Final[str] = "#2F2F2F"
 FONT_FAMILY: Final[str] = "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif"
 
-TENNIS_PALETTE: Final[list[str]] = [TENNIS_HARD, TENNIS_CLAY, TENNIS_GREEN]
-
-# Mapping surface → couleur (centralisé pour les pages qui colorent par surface).
+#: Couleurs par surface (Okabe-Ito) — clés anglaises (données) et françaises (affichage).
 SURFACE_COLORS: Final[dict[str, str]] = {
-    "Hard": TENNIS_HARD,
-    "Clay": TENNIS_CLAY,
-    "Grass": TENNIS_GREEN,
+    "Hard": "#0072B2",
+    "Clay": "#D55E00",
+    "Grass": "#009E73",
+    "Dur": "#0072B2",
+    "Terre battue": "#D55E00",
+    "Gazon": "#009E73",
+    "Global": "#6B7A72",
 }
 
+#: Style de trait par surface (redondance avec la couleur).
+SURFACE_DASH: Final[dict[str, str]] = {
+    "Global": "solid",
+    "Dur": "dash",
+    "Terre battue": "dot",
+    "Gazon": "dashdot",
+}
 
-def apply_tennis_theme(fig: go.Figure) -> go.Figure:
-    """Applique le thème tennis (couleurs, polices, axes) à une figure Plotly.
+#: Couleurs par circuit.
+CIRCUIT_COLORS: Final[dict[str, str]] = {"ATP": "#3D5AFE", "WTA": "#C2185B"}
 
-    Le layout est optimisé mobile : marges réduites, légende en bas (mieux que
-    sur le côté quand l'écran est étroit), hovermode adapté au tactile.
+#: Victoire / défaite : bleu et orange (lisibles en daltonisme rouge-vert).
+WIN_COLOR: Final[str] = "#0072B2"
+LOSS_COLOR: Final[str] = "#E69F00"
+
+#: Couleur d'accent (série unique).
+ACCENT: Final[str] = "#1B7A4B"
+
+PALETTE: Final[list[str]] = [
+    "#0072B2",
+    "#D55E00",
+    "#009E73",
+    "#CC79A7",
+    "#E69F00",
+    "#56B4E9",
+    "#6B7A72",
+]
+
+#: Libellés français des surfaces (valeurs normalisées en base).
+SURFACE_LABELS: Final[dict[str, str]] = {
+    "hard": "Dur",
+    "clay": "Terre battue",
+    "grass": "Gazon",
+    "Hard": "Dur",
+    "Clay": "Terre battue",
+    "Grass": "Gazon",
+    "Carpet": "Moquette",
+}
+
+# Compatibilité : anciens noms encore importés par certaines pages.
+TENNIS_HARD: Final[str] = SURFACE_COLORS["Hard"]
+TENNIS_CLAY: Final[str] = SURFACE_COLORS["Clay"]
+TENNIS_GREEN: Final[str] = SURFACE_COLORS["Grass"]
+
+
+def apply_tennis_theme(fig: go.Figure, *, height: int | None = None) -> go.Figure:
+    """Applique la mise en page commune à une figure Plotly.
 
     Args:
         fig: Figure à styliser (mutée en place et retournée).
+        height: Hauteur en pixels (facultatif).
 
     Returns:
-        La même figure stylisée.
+        La même figure.
     """
     fig.update_layout(
-        template="plotly_white",
-        font=dict(family=FONT_FAMILY, color=TENNIS_LINE, size=13),
-        title_font=dict(size=16, color=TENNIS_LINE),
-        colorway=TENNIS_PALETTE,
-        hoverlabel=dict(
-            font=dict(family=FONT_FAMILY, size=12),
-            bgcolor="rgba(30, 45, 36, 0.95)",
-            bordercolor="rgba(0, 0, 0, 0)",
-        ),
-        # Marges resserrées pour maximiser la zone de tracé sur mobile
-        margin=dict(l=40, r=20, t=50, b=40),
-        # Légende en bas, horizontale : nettement mieux sur mobile que sur le côté
+        font=dict(family=FONT_FAMILY, size=13),
+        colorway=PALETTE,
+        margin=dict(l=8, r=8, t=24, b=8),
         legend=dict(
             orientation="h",
             yanchor="bottom",
-            y=-0.25,
-            xanchor="center",
-            x=0.5,
-            font=dict(size=11),
-            bgcolor="rgba(255, 255, 255, 0)",
+            y=1.02,
+            xanchor="left",
+            x=0,
+            title_text="",
         ),
-        # Touch-friendly : zone de hover plus généreuse
-        hovermode="closest",
-        # Pas de fond gris, fond blanc pur
-        paper_bgcolor="rgba(0, 0, 0, 0)",
-        plot_bgcolor="rgba(0, 0, 0, 0)",
-        # Autosize pour que Plotly recalcule la largeur sur resize
-        autosize=True,
+        hoverlabel=dict(font=dict(family=FONT_FAMILY, size=12)),
+        hovermode="x unified",
+        title=None,
     )
-    fig.update_xaxes(
-        title_font=dict(size=12),
-        tickfont=dict(size=11),
-        showline=True,
-        linewidth=1,
-        linecolor="#D0D0D0",
-        mirror=False,  # Pas de bordure en haut → moins encombré
-        gridcolor="#F0F0F0",
-        zerolinecolor="#E0E0E0",
-        # Auto-rotation des labels longs (utile sur mobile pour les dates)
-        automargin=True,
-    )
-    fig.update_yaxes(
-        title_font=dict(size=12),
-        tickfont=dict(size=11),
-        showline=True,
-        linewidth=1,
-        linecolor="#D0D0D0",
-        mirror=False,
-        gridcolor="#F0F0F0",
-        zerolinecolor="#E0E0E0",
-        automargin=True,
-    )
-    return fig
-
-
-def apply_dashboard_density(fig: go.Figure, *, height: int = 320) -> go.Figure:
-    """Variante plus dense d'`apply_tennis_theme` (marges plus serrées, KPI charts).
-
-    À utiliser pour les petits charts en dashboard (sparklines, micro-comparaisons)
-    où l'on veut minimiser l'espace mort autour du tracé.
-
-    Args:
-        fig: Figure à styliser.
-        height: Hauteur cible (px). Streamlit ignorera si `use_container_width=True`
-            est utilisé conjointement.
-
-    Returns:
-        La même figure stylisée.
-    """
-    apply_tennis_theme(fig)
-    fig.update_layout(
-        margin=dict(l=35, r=15, t=30, b=30),
-        height=height,
-        legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
-    )
+    if height:
+        fig.update_layout(height=height)
+    fig.update_xaxes(automargin=True, showgrid=False)
+    fig.update_yaxes(automargin=True, zeroline=False)
     return fig

@@ -5,7 +5,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> Plateforme personnelle d’**analytics tennis ATP/WTA** : statistiques descriptives, **Elo maison** (global et par surface), **régression logistique calibrée** pour la probabilité de victoire, et **insights** sur les tendances long-terme — interface **Streamlit** en français, stockage **DuckDB + Parquet**.
+> Plateforme personnelle d’**analytics tennis ATP/WTA** : statistiques descriptives, **Elo maison** (global et par surface), **résultats à jour toutes les 3 h**, **régression logistique calibrée** pour la probabilité de victoire et tendances long-terme — interface **Streamlit** en français, stockage **DuckDB + Parquet**.
 
 ## Démo en ligne
 
@@ -15,35 +15,45 @@ L'application est déployée sur Streamlit Cloud : **https://tennisanalytics.str
 
 | Domaine | Choix |
 | --- | --- |
-| Langage | Python 3.11+ |
-| Interface | Streamlit |
+| Langage | Python 3.11 |
+| Interface | Streamlit 1.67 (navigation `st.navigation`, thèmes clair et sombre) |
 | Données | Parquet + vues DuckDB |
-| Pipeline | GitHub Actions (cron + PR données) |
+| Sources | Archive Jeff Sackmann (2010 → mai 2026), tennis-data.co.uk, ESPN |
+| Pipeline | GitHub Actions toutes les 3 h, publication en Release GitHub |
 | ML | scikit-learn (LogisticRegression + calibration isotonique) |
 | Ratings | Elo implémenté maison (`src/tennis_analytics/ratings/elo.py`) |
-| Qualité | Ruff, Black, pytest + couverture |
-| Logs | loguru |
-| Validation | pandera (schémas critiques) |
+| Qualité | Ruff, Black, pytest (dont smoke tests `AppTest` de toutes les pages) |
+
+## Sources de données
+
+| Période | Source | Contenu |
+| --- | --- | --- |
+| 2010 → 25/05/2026 | Archive Sackmann (`data/reference/`, figée) | Matchs avec statistiques détaillées, joueurs, classements |
+| Depuis juin 2026 | [tennis-data.co.uk](https://www.tennis-data.co.uk) | Résultats et classement au match (publication ~hebdomadaire) |
+| Derniers jours | API publique ESPN | Résultats du jour, marqués **provisoires** jusqu'à confirmation ; classement officiel du jour |
+
+Les dépôts `JeffSackmann/tennis_atp` et `tennis_wta` ont été retirés en juin 2026 ;
+l'archive est reconstructible depuis un miroir (`tennis-ingest --rebuild-archive`).
+Les noms des sources récentes sont rapprochés des identifiants Sackmann
+(`ingestion/player_matching.py`, alias manuels dans `data/reference/player_aliases.csv`).
 
 ## Architecture
 
-Structure inspirée de [cookiecutter-data-science](https://drivendata.github.io/cookiecutter-data-science/) :
-
 ```text
-data/raw          → CSV Sackmann (gitignored)
-data/interim      → Parquet typés post-validation (gitignored)
-data/processed    → Parquet consommés par DuckDB + modèles joblib (versionnés)
-notebooks/        → Exploration (le code stabilisé migre vers src/)
-references/       → Dictionnaires de données, documentation des sources
-reports/figures/  → Analyses et figures exportées
-scripts/          → Utilitaires de maintenance (sync des dépendances)
+data/reference    → Archive Sackmann figée + instantané tennis-data + alias (versionnés)
+data/processed    → Parquet servis + modèle joblib (copie de secours versionnée)
+data/state        → État entre exécutions (gitignored, publié dans la Release)
 src/tennis_analytics/
-    ingestion/      → Téléchargement et validation (pandera)
-    transformation/ → Consolidation, Elo, entraînement modèle
+    ingestion/      → Sackmann (archive), tennis-data, ESPN, rapprochement des joueurs
+    transformation/ → Fusion des sources, ordre chronologique, Elo, modèle
     ratings/        → Moteur Elo
-    modeling/       → Probabilité de victoire (split temporel)
+    modeling/       → Probabilité de victoire (split temporel) + variables d'inférence
+    publish.py      → Manifest SHA-256, contrôles de non-régression et de fraîcheur
     db/             → Connexion DuckDB + vues `read_parquet`
-app/              → Streamlit (FR), thème Plotly centralisé
+app/Home.py       → Routeur (st.navigation), barre latérale commune
+app/views/        → Pages : Accueil, Résultats, Classements, Joueurs, Face-à-face,
+                    Tournois, Tendances, Styles de jeu, Prédictions, Méthodologie
+app/components/   → Bootstrap (synchronisation des données), requêtes, widgets, thème
 tests/            → pytest
 ```
 
@@ -53,17 +63,16 @@ L'application ne demande **aucune manipulation manuelle** :
 
 | Quoi | Comment | Fréquence |
 |---|---|---|
-| Mise à jour des données | `daily_ingest.yml` — ingestion puis commit direct sur `main` | 04:00 UTC |
-| Rafraîchissement de l'app | Empreinte des parquets (`data_fingerprint`) invalidant le cache | ≤ 5 min après un commit |
-| Disponibilité | `healthcheck.yml` — keep-alive + issue automatique si l'app tombe | toutes les 6 h |
+| Mise à jour des données | `daily_ingest.yml` : sources récentes → Elo/modèle si changement → Release `data-latest` | toutes les 3 h |
+| Rafraîchissement de l'app | L'app relit le manifest de la Release et bascule atomiquement (SHA-256 vérifiés) | ≤ 15 min, sans redéploiement |
+| Copie de secours | Commit des parquets sur `main` si la dernière date de plus de 7 jours | hebdomadaire |
+| Alertes | Issues `ingestion-echec`, `donnees-perimees` (aucun match depuis 10 j hors intersaison), `cron-arrete`, `indisponibilite` | automatiques |
+| Disponibilité | `healthcheck.yml` (keep-alive) et `keepalive.yml` (réarme les crons) | 6 h / hebdo |
 
-Le healthcheck requiert la variable de dépôt `APP_URL`
-(*Settings → Secrets and variables → Actions → Variables*).
-
-## Prérequis
-
-- [uv](https://docs.astral.sh/uv/) (recommandé) ou pip équivalent
-- Compte GitHub pour cloner / pousser le dépôt `tennis-analytics`
+tennis-data.co.uk refuse les IP de GitHub Actions (HTTP 403) : en CI, l'ingestion
+réutilise le dernier instantané tennis-data versionné et s'appuie sur ESPN pour
+les résultats récents. Lancer `uv run tennis-ingest` depuis un poste local
+rafraîchit cet instantané (à commiter).
 
 ## Installation
 
@@ -77,72 +86,41 @@ cp .env.example .env   # adapter ROOT_PATH si besoin
 ## Utilisation locale
 
 ```bash
-# Ingestion complète (télécharge les CSV Sackmann, filtre 2010+, écrit les parquets)
-uv run tennis-ingest
+uv run tennis-ingest                     # sources récentes + archive → data/processed
+uv run tennis-ingest --offline           # archive seule, sans réseau
+uv run tennis-ingest --rebuild-archive   # régénère l'archive Sackmann (ponctuel)
 
-# Variantes utiles
-uv run tennis-ingest --skip-download              # ré-utilise les CSV locaux data/raw/
-uv run tennis-ingest --skip-download --skip-build # ne fait que la matérialisation interim
-uv run tennis-ingest --root /chemin/autre         # racine projet alternative
-
-# Recalcul des Elo et contexte pré-match
 uv run python -m tennis_analytics.transformation.build_elo
-
-# Entraînement + export du modèle calibré
 uv run python -m tennis_analytics.transformation.build_model
 
-# Application Streamlit
-uv run streamlit run app/Home.py
+uv run streamlit run app/Home.py         # lit la Release ; TENNIS_DATA_RELEASE_URL="" = données locales
 ```
 
-## Automatisation
-
-Le workflow GitHub Actions `.github/workflows/daily_ingest.yml` est **actif** :
-chaque jour à 04:00 UTC, il télécharge les nouveaux CSV Sackmann, reconstruit
-les parquets et le modèle, puis ouvre une PR `data/update-<run_id>`. Déclenchement
-manuel possible via *Actions → Ingestion quotidienne → Run workflow*.
+`make help` liste les raccourcis (`make check`, `make rebuild`, `make deps`…).
 
 ## Qualité et tests
 
 ```bash
-uv run ruff check src app tests
-uv run black --check src app tests
-uv run pytest
+make check     # ruff + black + pytest (dont smoke tests AppTest de chaque page)
 ```
-
-## Secrets GitHub (optionnels)
-
-| Secret | Usage |
-| --- | --- |
-| `CODECOV_TOKEN` | Couverture détaillée (Codecov), si vous l’activez |
-| `SLACK_WEBHOOK_URL` | Notification d’échec d’ingestion (non câblé par défaut) |
-| `MAX_PARQUET_BYTES` | Variable dépôt (`vars`) pour le seuil de taille en CI |
-
-Les jeux Sackmann sont **publics** : aucun secret n’est requis pour l’ingestion.
 
 ## Garde-fous données
 
-- Les parquets volumineux peuvent alourdir le dépôt : le workflow **CI** échoue si un fichier de `data/processed/` dépasse le plafond (par défaut **100 Mo**, surchargeable via `MAX_PARQUET_BYTES`).
-- `.gitattributes` marque `*.parquet` en **binary** pour des diffs propres.
-- L’ingestion quotidienne ouvre une **PR** (`peter-evans/create-pull-request`) plutôt que de pousser directement sur `main`.
+- Ingestion en échec **bruyant** : source obligatoire injoignable sans instantané, schéma modifié, > 10 % de joueurs non reconnus.
+- Publication refusée si le volume chute de plus de 10 % ou si la date du dernier match recule.
+- Reconstruction déterministe (tri stable) : une exécution sans nouveauté ne publie rien.
+- La CI échoue si un parquet dépasse `MAX_PARQUET_BYTES` (100 Mo par défaut).
 
 ## Déploiement Streamlit Community Cloud
 
-1. Connecter le dépôt public `Francois-b-24/tennis-analytics`.
-2. Point d’entrée : `app/Home.py`.
-3. S’assurer que les **parquets** nécessaires sont présents sur la branche déployée (ou lancer une ingestion manuelle / merger une PR data).
-
-Badge dédié (à activer après premier déploiement) :
-
-```markdown
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io/<votre-app>)
-```
+1. Dépôt public `Francois-b-24/tennis-analytics`, point d'entrée `app/Home.py`.
+2. Dépendances installées via `requirements.txt` (`make deps` le régénère depuis `pyproject.toml`).
+3. Les données viennent de la Release `data-latest` ; `data/processed` sert de repli.
 
 ## Roadmap (extraits)
 
-- [ ] Pages Joueurs, Tournois, Elo comparés, Prédictions (UI complète).
-- [ ] Enrichissements tactiques (momentum, clutch, clustering).
-- [ ] DVC ou release d’artefacts si la taille Git devient problématique.
+- [ ] Statistiques détaillées (aces, durée) pour les matchs postérieurs à mai 2026.
+- [ ] Tournois Challenger.
 - [ ] MLflow optionnel pour la traçabilité des expériences.
 
 ## Contribution

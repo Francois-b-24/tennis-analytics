@@ -13,16 +13,16 @@ Un `Makefile` enveloppe les tâches usuelles (`make help` pour la liste) :
 # Installation
 uv sync --all-extras
 
-# Ingestion Sackmann (téléchargement → parquets interim → tables processed)
-uv run tennis-ingest                              # complet
-uv run tennis-ingest --skip-download              # CSV déjà locaux dans data/raw/
-uv run tennis-ingest --skip-download --skip-build # matérialisation interim seule
+# Ingestion : archive Sackmann figée (data/reference) + tennis-data + ESPN → data/processed
+uv run tennis-ingest                              # complet (rafraîchit aussi l'instantané tennis-data)
+uv run tennis-ingest --offline                    # archive seule, sans réseau
+uv run tennis-ingest --rebuild-archive            # régénère l'archive Sackmann depuis le miroir (ponctuel)
 
 # Recalcul Elo + modèle ML (à lancer après ingestion ou après modif moteur Elo)
 uv run python -m tennis_analytics.transformation.build_elo
 uv run python -m tennis_analytics.transformation.build_model
 
-# App Streamlit
+# App Streamlit (lit la Release data-latest ; TENNIS_DATA_RELEASE_URL="" = data/processed local)
 uv run streamlit run app/Home.py
 
 # Qualité
@@ -39,22 +39,43 @@ Le script `tennis-ingest` requiert le package installé en editable (`uv sync` o
 
 Layout `src/` de type cookiecutter-data-science. **Tout le code métier vit dans le
 package unique `src/tennis_analytics/`** (`ingestion`, `transformation`, `ratings`,
-`modeling`, `db`, `analytics`) — les imports sont toujours qualifiés
+`modeling`, `db`) + `ids.py`, `publish.py` — les imports sont toujours qualifiés
 (`from tennis_analytics.ratings.elo import ...`).
 
-`app/` n'est **pas** un package installé : les pages Streamlit l'atteignent via le
-`sys.path.insert` en tête de fichier, suivi de `init_app(__file__)`. C'est la raison
-du `# ruff: E402` toléré sur `app/**` — les imports après le bootstrap sont voulus.
+`app/` n'est **pas** un package installé : `app/Home.py` est le **routeur**
+(`st.navigation(position="top")`) ; il insère `app/` dans `sys.path`, appelle
+`st.set_page_config` (une seule fois) puis exécute la page choisie dans
+`app/views/`. Les vues importent donc `components.*` directement. `E402` reste
+toléré sur `app/**` (imports après le bootstrap du routeur).
 
-`data/raw` et `data/interim` sont gitignorés ; **`data/processed` est versionné**
-(~22 Mo) car Streamlit Cloud n'exécute pas le pipeline.
+Les `url_path` historiques sont conservés dans `PAGES` (`/Joueurs`,
+`/Classements_Elo`, `/Insights`, `/Profils_et_Styles`, `/Definition_Elo`…) ;
+une page supprimée devient une vue `visibility="hidden"` qui redirige
+(`redirect_top20.py`). Ne pas casser ces URL.
+
+`data/raw`, `data/interim` et `data/state` sont gitignorés. **`data/reference`**
+(archive Sackmann figée, instantané tennis-data, alias joueurs) est versionné.
+`data/processed` est une **copie de secours** versionnée : l'app sert en priorité
+la Release GitHub `data-latest`, publiée par l'ingestion.
 
 ## Architecture — flux de données
 
 ```
-data/raw/*.csv  →  data/interim/*.parquet  →  data/processed/*.parquet  →  DuckDB views  →  Streamlit
-   (Sackmann)      (typé + validé pandera)    (matches, players, elo*)     (v_*)            (app/)
+data/reference/sackmann_*.parquet ─┐
+tennis-data.co.uk (xlsx) ──────────┼→ data/processed/*.parquet → Release data-latest → app (cache /tmp) → vues DuckDB
+ESPN (API, provisoire) ────────────┘   (matches, players,          (manifest SHA-256,     (v_*)
+                                         rankings, elo*, modèle)     toutes les 3 h)
 ```
+
+- **Identifiants** : WTA = id Sackmann + 1 000 000, nouveaux joueurs (hash du nom)
+  à partir de 2 000 000 (ATP) / 3 000 000 (WTA) — cf. `src/tennis_analytics/ids.py`.
+  Chaque `player_id` appartient à un seul circuit.
+- **Ordre chronologique** : toujours `transformation/ordering.py::sort_chronologically`
+  (date de tournoi, tournoi, tour, n° de match). Sackmann date tous les matchs d'un
+  tournoi du lundi de début : trier sur la date seule mélange les tours.
+- **Sources récentes** : `ingestion/recent.py`. tennis-data renvoie **403 depuis
+  GitHub Actions** (Cloudflare) : en CI on réutilise `data/reference/recent/`,
+  rafraîchi par une ingestion locale. Ne pas contourner ce blocage.
 
 Le **runtime app ne lit pas pandas directement** : il passe par des vues DuckDB (`v_matches`, `v_players`, `v_elo_latest`, `v_player_names`) déclarées dans `src/tennis_analytics/db/duckdb_session.py:create_connection`. Modifier le schéma d'un parquet impose de réviser la vue correspondante.
 
@@ -62,7 +83,7 @@ Le **runtime app ne lit pas pandas directement** : il passe par des vues DuckDB 
 
 - **Split temporel obligatoire** (`temporal_train_test_split` dans `src/tennis_analytics/modeling/win_probability.py`). Un fallback `train_test_split` aléatoire a été retiré volontairement pour éviter le leakage : si le split temporel produit < 10 lignes, on lève `ValueError`. **Ne jamais réintroduire de shuffle**.
 - Features assemblées en streaming dans `assemble_training_frame` : `h2h`, `surface_winrate`, `recent_form` sont calculées en ne regardant que les matchs antérieurs. L'ordre chronologique du DataFrame d'entrée est critique.
-- Le bundle joblib (`data/processed/models/logreg_calibrated.joblib`) contient `{model, features, diagnostics}` — la page Prédictions affiche calibration + feature importance depuis `diagnostics`. Régénérer le bundle après chaque modif du modèle.
+- Le bundle joblib (`data/processed/models/logreg_calibrated.joblib`) contient `{model, features, diagnostics}` — la page Méthodologie affiche calibration + poids des indicateurs depuis `diagnostics`. Régénérer le bundle après chaque modif du modèle.
 
 ## Moteur Elo — points sensibles
 
@@ -72,25 +93,26 @@ Le **runtime app ne lit pas pandas directement** : il passe par des vues DuckDB 
 ## Conventions code (cf. `.cursorrules`)
 
 - **Langue** : UI Streamlit (`app/`), docstrings et commentaires en **français** (style Google). Identifiants Python en **anglais** (PEP 8).
-- **Visualisation** : Plotly uniquement dans `app/`, jamais matplotlib/altair. Thème centralisé via `app/components/plotly_theme.py::apply_tennis_theme(fig)`. Utiliser `st.plotly_chart(fig, use_container_width=True)`.
+- **Visualisation** : Plotly uniquement dans `app/`, jamais matplotlib/altair. Thème centralisé via `app/components/plotly_theme.py::apply_tennis_theme(fig)`. Utiliser `st.plotly_chart(fig, width="stretch")` (`use_container_width` est déprécié).
 - **Logging** : `loguru` (messages français), jamais `print`.
 - **Chemins** : `pathlib` + `ROOT_PATH` (cf. `.env.example`), jamais de chemins absolus codés en dur.
 - **Cache Streamlit** : `@st.cache_data` pour lectures DuckDB et agrégations, `@st.cache_resource` pour la connexion DuckDB. **Toujours un `ttl=`** — un cache sans TTL fige les données jusqu'au redémarrage.
-- **Fraîcheur des données (non négociable)** : toute fonction `@st.cache_data` lisant DuckDB prend `_DATA_KEY` (issu de `data_key(_ROOT)`) comme première clé de cache, **jamais `str(_ROOT)`**. `_ROOT` est constant : l'utiliser comme clé fait servir des données périmées après l'ingestion quotidienne. Cf. `app/components/_bootstrap.py::data_fingerprint` et `tests/test_data_freshness.py`.
+- **Fraîcheur des données (non négociable)** : toute fonction `@st.cache_data` lisant DuckDB prend `_DATA_KEY` (issu de `data_key(_ROOT)`) comme premier argument, nommé **`cache_key` — jamais préfixé `_`** (Streamlit ne hache pas les arguments `_…` : la clé serait ignorée). Jamais `str(_ROOT)`, constant. Cf. `_bootstrap.py::resolve_data_dir` et `tests/test_ids_and_ordering.py::test_cache_data_first_argument_is_hashed`.
 - **Connexion DuckDB** : une seule par page, celle rendue par `init_app()` (`_ROOT, _CONNECTION = init_app(__file__)`). Ne jamais redéclarer un `@st.cache_resource def _connection()` local — il court-circuite l'invalidation.
-- **Bootstrap pages** : chaque page Streamlit appelle `init_app(__file__)` depuis `app/components/_bootstrap.py` (gère `sys.path`, `.env`, connexion DuckDB cachée). Ne pas dupliquer le bloc d'init.
-- **Composants UI obligatoires** : utiliser `page_header()` (pas `st.title` + `page_info`), `kpi_row()` (pas `st.columns` + `st.metric` recopiés), `section()` (pas `st.subheader` brut), `df_styled()` (pas `st.dataframe` direct — auto-détecte les `column_config` Elo / dates / pourcentages). Tous exposés depuis `app/components/widgets.py`.
+- **Bootstrap pages** : chaque vue appelle `_ROOT, _CONNECTION = init_app(__file__)` (connexion cachée, invalidée à chaque nouvelle publication). Pas de `sys.path.insert` ni de `st.set_page_config` dans les vues : le routeur s'en charge.
+- **Composants UI obligatoires** : utiliser `page_header()` (pas `st.title`), `kpi_row()` (`st.metric` bordés), `section()` (h2, `level=3` pour h3), `df_styled()` (pas `st.dataframe` direct — auto-détecte Elo / rang / % / dates ; hauteur ajustée aux petits tableaux). Tous dans `app/components/widgets.py`.
+- **Design** : pas d'emoji dans les titres et libellés (icônes `:material/…:`), pas de couleur codée en dur dans le CSS (thèmes clair/sombre dans `.streamlit/config.toml`), couleurs de graphiques depuis `plotly_theme.py` (palette Okabe-Ito, tirets/hachures en plus de la couleur). Libellés FR via `surface_fr`, `level_fr`, `round_fr`.
 - **Requêtes SQL partagées** : centraliser dans `app/components/queries.py` (`player_options`, `tournaments_for_circuit`, `latest_match_per_circuit`). Ne jamais redéfinir `_player_options` dans une page.
-- **Selectbox circuit unifié** : utiliser `circuit_selectbox()` de `app/components/widgets.py` (constante `CIRCUITS = ("Tous", "ATP", "WTA")`). Toute concaténation SQL passe par `circuit_filter_sql()` qui valide via allowlist.
+- **Circuit commun** : `circuit_selectbox()` (une fois par vue) — `segmented_control` partagé par toutes les pages (clé de session `circuit`, reflétée dans l'URL `?circuit=`). `include_all=False` ramène « Tous » à ATP. Toute concaténation SQL passe par `circuit_filter_sql()` (allowlist).
+- **Joueurs par défaut** : `player_selectbox(..., default_player_id=top_player_ids(...)[0])` (n°1 Elo actif), jamais le premier nom alphabétique.
 - **Tests** : toute fonction de calcul métier (Elo, features, pipeline) doit avoir une couverture pytest.
 
 ## Git & CI
 
 - Commits : **Conventional Commits en français** (`feat: …`, `fix: …`, `chore: …`).
 - CI (`.github/workflows/ci.yml`) lance ruff + black + pytest avec `--cov-fail-under=40` sur Python 3.11. Si la CI fail sur le linter, fixer le code, **pas la config**.
-- **Valider avec les versions épinglées**, pas celles résolues localement : la CI installe `ruff==0.7.4` et `black==24.10.0`. Une règle plus récente ajoutée à `pyproject.toml` (ex. un ignore `RUF046`) fait échouer le *parsing* de la config sur 0.7.4 — pas seulement le lint. Contrôle avant push :
-  `uv run --isolated --with 'ruff==0.7.4' ruff check src app tests`
-- Workflow `daily_ingest.yml` actif (cron 04:00 UTC) : **commit direct sur `main`** des nouveaux parquets (plus de PR à merger). Un contrôle de non-régression refuse toute chute > 10 % du volume de `matches`/`players`.
+- Les versions des outils viennent de `[project.optional-dependencies].dev` (`ruff==0.17.5`, `black==26.10.1`), installées par la CI via `pip install -e ".[dev]"` : `uv run ruff`/`uv run black` utilisent donc les mêmes. Après une montée de version, régénérer `requirements.txt` (`make deps`) — Streamlit Cloud l'utilise.
+- Workflow `daily_ingest.yml` (« Ingestion des données », cron `17 */3 * * *`) : ingestion → si `input_hash` change (données **ou** versions pandas/pyarrow/sklearn) : Elo + modèle → contrôles (`python -m tennis_analytics.publish check` : volume −10 %, dernier match qui recule) → **upload dans la Release `data-latest`** (manifest en dernier). Pas de commit par exécution ; copie de secours sur `main` au plus une fois par semaine. L'état ESPN cumulé voyage dans la Release (`state-*.parquet`).
 - Workflow `healthcheck.yml` (toutes les 6 h) : ping l'app (variable de dépôt `APP_URL`) pour empêcher la mise en veille Streamlit Cloud, et ouvre/referme une issue `indisponibilite` automatiquement.
 - **L'app déployée est privée** : sa racine renvoie un `303` vers l'authentification Streamlit alors qu'elle fonctionne normalement. Pour juger de sa santé, sonder `/healthz` (répond `200`) — ne jamais conclure à une panne sur la base du code retour de la racine.
 - Workflow `keepalive.yml` (lundi 05:00 UTC) : GitHub désactive les crons après ~60 jours sans activité sur le dépôt, silencieusement. Il réarme ce compteur et ouvre une issue `cron-arrete` si l'ingestion est muette depuis > 48 h. `daily_ingest` ouvre de même une issue `ingestion-echec` en cas de panne. Ces deux issues se referment automatiquement au retour à la normale.
@@ -98,18 +120,19 @@ Le **runtime app ne lit pas pandas directement** : il passe par des vues DuckDB 
 
 ## Vérifier un changement de bout en bout
 
-`pytest` ne charge aucune page Streamlit : une page peut être verte en test et
-casser au runtime. Pour valider réellement (ce qui suit reproduit Streamlit Cloud,
-qui installe via `pip install -r requirements.txt`, pas via `uv`) :
+`tests/test_app_smoke.py` exécute chaque vue via le routeur (`AppTest` +
+`switch_page`), pour chaque circuit : il attrape les exceptions, pas les défauts
+visuels. Pour valider réellement (Streamlit Cloud installe via
+`pip install -r requirements.txt`, pas via `uv`) :
 
 ```bash
-uv run python -m compileall -q app/          # syntaxe des 10 pages
+uv run python -m compileall -q app/          # syntaxe des vues
 uv run streamlit run app/Home.py --server.port 8599 --server.headless true &
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8599/Joueurs
 ```
 
-Chaque page est atteignable par son nom sans le préfixe numérique
-(`1_Joueurs.py` → `/Joueurs`, `9_Profils_et_Styles.py` → `/Profils_et_Styles`).
+Chaque page est atteignable par son `url_path` déclaré dans `app/Home.py`
+(`/Resultats`, `/Joueurs`, `/Classements_Elo`, `/Profils_et_Styles`…).
 
 ## Notes environnement
 
