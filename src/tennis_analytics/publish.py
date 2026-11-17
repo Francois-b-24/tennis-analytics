@@ -80,12 +80,31 @@ def _library_versions() -> str:
 def input_hash(processed: Path) -> str:
     """Empreinte des tables d'ingestion **et** des versions de bibliothèques.
 
-    Une mise à jour de scikit-learn rend le modèle publié illisible ou
-    incohérent : elle doit forcer un recalcul même sans nouveau match.
+    Une mise à jour de scikit-learn, ou une modification du moteur Elo ou du
+    modèle, doit forcer un recalcul même sans nouveau match.
     """
     entries = {name: {"sha256": sha256_file(processed / name)} for name in INPUT_FILES}
     entries["libraries"] = {"sha256": hashlib.sha256(_library_versions().encode()).hexdigest()}
-    return _combined(entries, [*INPUT_FILES, "libraries"])
+    entries["code"] = {"sha256": _derivation_code_hash()}
+    return _combined(entries, [*INPUT_FILES, "libraries", "code"])
+
+
+#: Code dont dépendent les artefacts dérivés (Elo, modèle) : le modifier doit
+#: forcer un recalcul et une publication, même sans nouveau match.
+DERIVATION_CODE = (
+    "ratings/elo.py",
+    "modeling/win_probability.py",
+    "transformation/ordering.py",
+)
+
+
+def _derivation_code_hash() -> str:
+    package = Path(__file__).resolve().parent
+    digest = hashlib.sha256()
+    for rel in DERIVATION_CODE:
+        digest.update(rel.encode())
+        digest.update((package / rel).read_bytes())
+    return digest.hexdigest()
 
 
 def build_manifest(processed: Path) -> dict[str, Any]:
