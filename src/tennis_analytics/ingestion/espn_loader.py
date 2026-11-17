@@ -58,6 +58,38 @@ def fetch_events(today: date, days: int = 7) -> dict[str, list[dict[str, Any]]]:
     return {c: list(v.values()) for c, v in events.items()}
 
 
+RANKINGS_URL: Final[str] = "https://site.api.espn.com/apis/site/v2/sports/tennis/{tour}/rankings"
+
+
+def fetch_rankings(matcher: PlayerMatcher, today: date) -> pd.DataFrame:
+    """Classement officiel du jour (top 150 ATP et WTA) au schéma `rankings`.
+
+    tennis-data ne fournit le classement qu'au moment des matchs ; ESPN donne
+    le classement en vigueur, daté du lundi de la semaine courante.
+    """
+    monday = today - timedelta(days=today.weekday())
+    rows = []
+    for circuit in ("ATP", "WTA"):
+        payload = json.loads(fetch_bytes(RANKINGS_URL.format(tour=circuit.lower()), timeout_s=30))
+        ranking = (payload.get("rankings") or [{}])[0]
+        for item in ranking.get("ranks", []):
+            athlete = item.get("athlete") or {}
+            name = athlete.get("displayName")
+            if not name or item.get("current") is None:
+                continue
+            player = matcher.resolve_full(circuit, name, _ioc(athlete))
+            rows.append(
+                {
+                    "ranking_date": int(monday.strftime("%Y%m%d")),
+                    "rank": int(item["current"]),
+                    "player": player.player_id,
+                    "points": float(item.get("points") or 0.0),
+                    "circuit": circuit,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 def _calendar_gap(a: pd.Timestamp, b: pd.Timestamp) -> int:
     diff = abs(a.dayofyear - b.dayofyear)
     return min(diff, 365 - diff)
@@ -124,7 +156,11 @@ def _score(competitors: list[dict[str, Any]], status: str) -> str:
 
 
 def _ioc(athlete: dict[str, Any]) -> str | None:
-    href = ((athlete.get("flag") or {}).get("href")) or ""
+    citizenship = athlete.get("citizenshipCountry")
+    if isinstance(citizenship, str) and len(citizenship) == 3:
+        return citizenship.upper()
+    flag = athlete.get("flag") or ""
+    href = flag.get("href", "") if isinstance(flag, dict) else str(flag)
     code = href.rsplit("/", 1)[-1].split(".")[0]
     return code.upper() if len(code) == 3 else None
 

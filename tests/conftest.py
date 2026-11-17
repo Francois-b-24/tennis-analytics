@@ -8,3 +8,6 @@ import os
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+
+# Les tests n'interrogent jamais la Release de données : copie locale uniquement.
+os.environ["TENNIS_DATA_RELEASE_URL"] = ""

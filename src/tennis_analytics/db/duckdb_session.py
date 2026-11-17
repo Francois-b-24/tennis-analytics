@@ -44,11 +44,16 @@ def _register_parquet_view(
     connection.execute(ddl)
 
 
-def create_connection(project_root: Path | None = None) -> duckdb.DuckDBPyConnection:
+def create_connection(
+    project_root: Path | None = None,
+    processed_dir: Path | None = None,
+) -> duckdb.DuckDBPyConnection:
     """Ouvre une connexion DuckDB (fichier optionnel) et enregistre les vues parquet.
 
     Args:
         project_root: Racine du dépôt ; si None, utilise `ROOT_PATH` ou inférence locale.
+        processed_dir: Dossier des parquets à servir (par défaut
+            `<racine>/data/processed`) — ex. publication téléchargée par l'app.
 
     Returns:
         Connexion prête à l'emploi.
@@ -60,7 +65,7 @@ def create_connection(project_root: Path | None = None) -> duckdb.DuckDBPyConnec
     else:
         connection = duckdb.connect(database=":memory:")
 
-    processed = _processed_dir(root)
+    processed = processed_dir or _processed_dir(root)
     _register_parquet_view(connection, "v_matches", processed / "matches.parquet")
     _register_parquet_view(connection, "v_rankings", processed / "rankings.parquet")
     _register_parquet_view(connection, "v_elo_latest", processed / "elo_latest.parquet")

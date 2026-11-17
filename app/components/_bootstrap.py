@@ -3,6 +3,7 @@
 Centralise :
 - la résolution de ROOT_PATH (.env ou chemin fichier)
 - l'injection des dossiers `app/`, racine et `src/` dans sys.path
+- la synchronisation des données publiées (Release GitHub `data-latest`)
 - la création (cachée) de la connexion DuckDB
 
 Usage dans chaque page :
@@ -14,8 +15,14 @@ Usage dans chaque page :
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
+import shutil
 import sys
+import tempfile
+import urllib.request
+import uuid
 from pathlib import Path
 
 import duckdb
@@ -77,16 +84,124 @@ def data_fingerprint(root_str: str) -> str:
     return "|".join(parts) if parts else "vide"
 
 
-@st.cache_resource(show_spinner=False)
-def _cached_connection(root_str: str, fingerprint: str) -> duckdb.DuckDBPyConnection:
-    """Connexion DuckDB cachée par racine **et** empreinte des données.
+#: Release où le workflow d'ingestion publie les données (toutes les 3 h).
+#: `TENNIS_DATA_RELEASE_URL=""` désactive la synchronisation (tests, hors ligne).
+DEFAULT_RELEASE_URL = (
+    "https://github.com/Francois-b-24/tennis-analytics/releases/download/data-latest"
+)
+
+#: Fréquence (secondes) de vérification d'une nouvelle publication.
+DATA_SYNC_TTL = 900
+
+_HTTP_TIMEOUT = 20
+
+
+def _release_url() -> str:
+    return os.getenv("TENNIS_DATA_RELEASE_URL", DEFAULT_RELEASE_URL).rstrip("/")
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _fetch(url: str) -> bytes:
+    request = urllib.request.Request(url, headers={"User-Agent": "tennis-analytics-app"})
+    with urllib.request.urlopen(request, timeout=_HTTP_TIMEOUT) as response:
+        return response.read()
+
+
+def _download_release(base_url: str, manifest: dict, cache_root: Path) -> Path:
+    """Télécharge une publication complète dans `cache_root/<data_hash>`.
+
+    Chaque fichier est vérifié (SHA-256) avant que le dossier ne soit rendu
+    visible par un renommage atomique : l'app ne lit jamais une publication
+    partielle.
+    """
+    target = cache_root / manifest["data_hash"][:16]
+    if (target / ".complete").exists():
+        return target
+    staging = cache_root / f".tmp-{uuid.uuid4().hex}"
+    try:
+        for rel, meta in manifest["files"].items():
+            dest = staging / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(_fetch(f"{base_url}/{Path(rel).name}"))
+            if _sha256(dest) != meta["sha256"]:
+                raise ValueError(f"Empreinte incorrecte pour {rel} (publication en cours ?)")
+        (staging / ".complete").write_text(manifest["data_hash"])
+        try:
+            staging.rename(target)
+        except OSError:
+            # Une autre session a terminé le même téléchargement entre-temps.
+            shutil.rmtree(staging, ignore_errors=True)
+    except Exception:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    # Ménage : on ne garde que la publication courante.
+    for old in cache_root.iterdir():
+        if old.is_dir() and old != target and not old.name.startswith(".tmp-"):
+            shutil.rmtree(old, ignore_errors=True)
+    return target
+
+
+@st.cache_data(ttl=DATA_SYNC_TTL, show_spinner=False)
+def resolve_data_dir(root_str: str) -> tuple[str, str]:
+    """Dossier des données à servir et son empreinte.
+
+    1. Publication la plus récente de la Release (relue toutes les 15 min) ;
+    2. à défaut (réseau, publication incomplète), copie de secours versionnée
+       dans `data/processed`.
+
+    Returns:
+        (dossier des parquets, empreinte servant de clé de cache).
+    """
+    base_url = _release_url()
+    local = (str(Path(root_str) / "data" / "processed"), data_fingerprint(root_str))
+    if not base_url:
+        return local
+    try:
+        manifest = json.loads(_fetch(f"{base_url}/manifest.json"))
+        cache_root = Path(tempfile.gettempdir()) / "tennis-analytics-data"
+        cache_root.mkdir(parents=True, exist_ok=True)
+        folder = _download_release(base_url, manifest, cache_root)
+        return str(folder), f"release:{manifest['data_hash']}"
+    except Exception as exc:  # tout échec (réseau, publication partielle) → copie locale
+        from loguru import logger
+
+        logger.warning("Release de données injoignable, copie locale servie : {}", exc)
+        return local
+
+
+def processed_dir(root: str | Path) -> Path:
+    """Dossier des données actuellement servies (Release ou copie locale)."""
+    return Path(resolve_data_dir(str(root))[0])
+
+
+def load_metadata(root: str | Path) -> dict:
+    """Métadonnées de fraîcheur (`metadata.json`) des données servies."""
+    path = processed_dir(root) / "metadata.json"
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+@st.cache_resource(ttl=24 * 3600, show_spinner=False)
+def _cached_connection(data_dir: str, fingerprint: str) -> duckdb.DuckDBPyConnection:
+    """Connexion DuckDB cachée par dossier **et** empreinte des données.
 
     `fingerprint` n'est pas utilisé dans le corps : il fait partie de la clé de
-    cache pour forcer une reconstruction des vues quand les parquets changent.
+    cache pour forcer une reconstruction des vues quand les données changent.
     """
     from tennis_analytics.db.duckdb_session import create_connection
 
-    return create_connection(Path(root_str))
+    return create_connection(processed_dir=Path(data_dir))
 
 
 #: Séparateur interne des clés de cache (absent des chemins POSIX/Windows).
@@ -94,10 +209,11 @@ _KEY_SEP = "\x1f"
 
 
 def data_key(root: str | Path) -> str:
-    """Clé de cache combinant racine projet et empreinte des données.
+    """Clé de cache combinant racine projet et empreinte des données servies.
 
-    À passer aux fonctions `@st.cache_data` à la place de `str(_ROOT)` : elle
-    change dès qu'un parquet est réécrit, ce qui purge les agrégations périmées.
+    À passer en premier argument des fonctions `@st.cache_data` (paramètre
+    `cache_key`, jamais préfixé `_`) : elle change dès qu'une nouvelle
+    publication est disponible, ce qui purge les agrégations périmées.
 
     Args:
         root: Racine du projet.
@@ -106,16 +222,14 @@ def data_key(root: str | Path) -> str:
         Clé opaque, à redonner à :func:`connection_for_key`.
     """
     root_str = str(root)
-    return f"{root_str}{_KEY_SEP}{data_fingerprint(root_str)}"
+    return f"{root_str}{_KEY_SEP}{resolve_data_dir(root_str)[1]}"
 
 
 def connection_for_key(key: str) -> duckdb.DuckDBPyConnection:
-    """Retourne la connexion DuckDB associée à une clé produite par :func:`data_key`.
-
-    Tolère une clé « nue » (simple racine) pour rester rétrocompatible.
-    """
-    root_str, _, fingerprint = key.partition(_KEY_SEP)
-    return _cached_connection(root_str, fingerprint or data_fingerprint(root_str))
+    """Retourne la connexion DuckDB associée à une clé produite par :func:`data_key`."""
+    root_str, _, _ = key.partition(_KEY_SEP)
+    folder, fingerprint = resolve_data_dir(root_str)
+    return _cached_connection(folder, fingerprint)
 
 
 def init_app(
@@ -123,8 +237,8 @@ def init_app(
 ) -> tuple[Path, duckdb.DuckDBPyConnection]:
     """Initialise une page Streamlit : sys.path, env, connexion DuckDB.
 
-    La connexion est invalidée automatiquement lorsque les parquets traités
-    sont mis à jour (cf. `data_fingerprint`) — aucun redémarrage manuel requis.
+    La connexion est invalidée automatiquement à chaque nouvelle publication
+    des données (cf. :func:`resolve_data_dir`) — aucun redémarrage requis.
 
     Args:
         caller_file: `__file__` de la page appelante (optionnel mais recommandé).
@@ -137,4 +251,5 @@ def init_app(
     load_dotenv(root / ".env")
     os.environ.setdefault("ROOT_PATH", str(root))
     _ensure_sys_path(root)
-    return root, _cached_connection(str(root), data_fingerprint(str(root)))
+    folder, fingerprint = resolve_data_dir(str(root))
+    return root, _cached_connection(folder, fingerprint)

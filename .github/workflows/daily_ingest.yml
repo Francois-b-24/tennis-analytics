@@ -1,33 +1,44 @@
-name: Ingestion quotidienne
+name: Ingestion des données
+
+# Toutes les 3 h : résultats récents (tennis-data + ESPN) fusionnés à l'archive
+# Sackmann, Elo et modèle recalculés si les données ont changé, puis publiés
+# dans la Release `data-latest` que l'app relit toutes les 15 min.
+#
+# Les données ne sont plus commitées sur `main` à chaque exécution (le dépôt
+# grossissait de plusieurs Mo par commit) : seule une copie de secours est
+# commitée au plus une fois par semaine, pour l'app si la Release est
+# injoignable.
 
 on:
   schedule:
-    # Tous les jours à 04:00 UTC (06:00 Paris été, 05:00 hiver).
-    # Les CSV Sackmann sont mis à jour en fin de journée US — 04:00 UTC = nuit calme.
-    - cron: "0 4 * * *"
+    # Minute 17 : GitHub retarde fortement les crons lancés à l'heure pile.
+    - cron: "17 */3 * * *"
   workflow_dispatch: {}
 
 permissions:
   contents: write
-  pull-requests: write
-  # Permet d'ouvrir une issue si l'ingestion échoue (cf. dernière étape).
+  # Ouvre/referme les issues d'échec et de données périmées.
   issues: write
 
 concurrency:
   group: daily-ingest
   cancel-in-progress: false
 
+env:
+  RELEASE_TAG: data-latest
+  GH_TOKEN: ${{ github.token }}
+  ROOT_PATH: ${{ github.workspace }}
+
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Nécessaire pour comparer aux parquets précédents et pousser sur main.
+          # Historique nécessaire pour dater la dernière copie de secours.
           fetch-depth: 0
-          persist-credentials: true
 
       - name: Configurer Python 3.11
         uses: actions/setup-python@v5
@@ -35,27 +46,44 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Installer les dépendances (runtime + dev)
+      - name: Installer les dépendances
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install -e ".[dev]"
+          pip install -e . --no-deps
 
-      - name: Vérifier l'environnement
+      - name: Récupérer la publication précédente
         run: |
-          python -c "from tennis_analytics.ingestion.cli import main; print('OK')"
+          mkdir -p previous data/state
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release download "$RELEASE_TAG" -p manifest.json -D previous || true
+            gh release download "$RELEASE_TAG" -p 'state-*' -D previous || true
+            for f in previous/state-*; do
+              [ -e "$f" ] && mv "$f" "data/state/${f#previous/state-}"
+            done
+          else
+            echo "Pas encore de Release $RELEASE_TAG : première publication."
+          fi
+          ls -la previous data/state
 
-      - name: Télécharger, valider et matérialiser
-        env:
-          ROOT_PATH: ${{ github.workspace }}
-        run: tennis-ingest
+      - name: Collecter les résultats récents
+        run: tennis-ingest --state-dir data/state
+
+      - name: Détecter un changement de données
+        id: diff
+        run: python -m tennis_analytics.publish changed --previous previous/manifest.json
 
       - name: Recalculer les Elo et le modèle
-        env:
-          ROOT_PATH: ${{ github.workspace }}
+        if: steps.diff.outputs.changed == 'true'
         run: |
           python -m tennis_analytics.transformation.build_elo
           python -m tennis_analytics.transformation.build_model
+
+      # Garde-fous : une ingestion partielle ne doit jamais écraser des données
+      # saines (chute de volume > 10 %, dernier match qui recule).
+      - name: Contrôles de non-régression et de fraîcheur
+        id: check
+        run: python -m tennis_analytics.publish check --previous previous/manifest.json
 
       - name: Vérifier la taille des parquets
         env:
@@ -65,100 +93,94 @@ jobs:
           import os
           from pathlib import Path
           limit = int(os.environ.get("MAX_PARQUET_BYTES") or "100000000")
-          failures = []
-          for p in Path("data/processed").glob("*.parquet"):
-              sz = p.stat().st_size
-              if sz > limit:
-                  failures.append(f"{p}: {sz} > {limit}")
-          if failures:
-              print("\n".join(failures))
-              raise SystemExit(1)
+          trop = [p for p in Path("data/processed").glob("*.parquet") if p.stat().st_size > limit]
+          if trop:
+              raise SystemExit(f"Parquets trop volumineux : {trop}")
           print("Tailles OK")
           PY
 
-      # Garde-fou : une ingestion partielle (réseau coupé, source amputée) ne doit
-      # jamais écraser des données saines. On refuse toute chute > 10 % du volume.
-      - name: Contrôle de non-régression du volume
+      - name: Publier dans la Release
+        if: steps.diff.outputs.changed == 'true'
         run: |
-          python - <<'PY'
-          import subprocess
-          import sys
-          from pathlib import Path
+          python -m tennis_analytics.publish manifest
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --title "Données (mise à jour automatique)" \
+              --notes "Parquets servis par l'app. Mis à jour par le workflow « Ingestion des données »." \
+              --latest=false
+          fi
+          mkdir -p upload
+          for f in data/state/*.parquet; do cp "$f" "upload/state-$(basename "$f")"; done
+          # Données d'abord, manifest en dernier : l'app ne voit une nouvelle
+          # version qu'une fois tous ses fichiers en ligne (SHA-256 vérifiés).
+          gh release upload "$RELEASE_TAG" --clobber \
+            data/processed/*.parquet data/processed/models/*.joblib \
+            data/processed/metadata.json upload/state-*
+          gh release upload "$RELEASE_TAG" --clobber data/processed/manifest.json
+          python -c 'import json; print("Publié :", json.load(open("data/processed/manifest.json"))["last_match_date"])'
 
-          import pandas as pd
-
-          seuil = 0.90
-          erreurs = []
-          for nom in ("matches.parquet", "players.parquet"):
-              chemin = Path("data/processed") / nom
-              if not chemin.exists():
-                  erreurs.append(f"{nom} : absent après ingestion")
-                  continue
-              nouveau = len(pd.read_parquet(chemin))
-              # Version précédente telle que commitée sur main
-              try:
-                  blob = subprocess.run(
-                      ["git", "show", f"HEAD:data/processed/{nom}"],
-                      capture_output=True, check=True,
-                  ).stdout
-              except subprocess.CalledProcessError:
-                  print(f"{nom} : pas de version précédente, contrôle ignoré")
-                  continue
-              ancien_fichier = Path(f"/tmp/prev_{nom}")
-              ancien_fichier.write_bytes(blob)
-              ancien = len(pd.read_parquet(ancien_fichier))
-              print(f"{nom} : {ancien} -> {nouveau} lignes")
-              if ancien and nouveau < ancien * seuil:
-                  erreurs.append(
-                      f"{nom} : chute anormale {ancien} -> {nouveau} "
-                      f"(< {seuil:.0%}) — ingestion suspecte"
-                  )
-          if erreurs:
-              print("\n".join(erreurs))
-              sys.exit(1)
-          print("Volumes cohérents")
-          PY
-
-      - name: Commiter directement sur main
+      - name: Copie de secours hebdomadaire sur main
+        if: steps.diff.outputs.changed == 'true'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/processed/*.parquet data/processed/models/*.joblib
-          if git diff --cached --quiet; then
-            echo "Aucun changement de données — rien à commiter."
+          derniere=$(git log -1 --format=%ct -- data/processed/matches.parquet || echo 0)
+          age_jours=$(( ( $(date +%s) - ${derniere:-0} ) / 86400 ))
+          echo "Dernière copie de secours : il y a ${age_jours} j"
+          if [ "$age_jours" -lt 7 ]; then
             exit 0
           fi
-          # metadata.json change à chaque run (horodatage) : on ne le joint
-          # qu'aux vrais changements de données.
-          git add data/processed/metadata.json
-          git commit -m "data: mise à jour automatique des parquets [skip ci]"
-          # Rebase avant push : évite l'échec si un commit est arrivé entre-temps.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/processed/*.parquet data/processed/models/*.joblib data/processed/metadata.json
+          git diff --cached --quiet && exit 0
+          git commit -m "data: copie de secours hebdomadaire des parquets [skip ci]"
           git pull --rebase origin main
           git push origin HEAD:main
-          echo "Données mises à jour sur main."
 
-      # Sans cette alerte, une ingestion cassée resterait silencieuse : les données
-      # se figeraient et il faudrait s'en apercevoir soi-même.
+      - name: Signaler des données périmées
+        uses: actions/github-script@v7
+        env:
+          STALE: ${{ steps.check.outputs.stale }}
+        with:
+          script: |
+            const label = "donnees-perimees";
+            const message = process.env.STALE;
+            const ouvertes = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo, state: "open", labels: label,
+            });
+            if (message && ouvertes.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title: "🟠 Données périmées", labels: [label],
+                body: `${message}\n\nLes sources répondent mais ne publient plus de résultats. ` +
+                      "Vérifier tennis-data.co.uk et ESPN.\n\n" +
+                      "_Cette issue se referme automatiquement au retour de résultats récents._",
+              });
+            }
+            if (!message) {
+              for (const issue of ouvertes.data) {
+                await github.rest.issues.update({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  issue_number: issue.number, state: "closed",
+                });
+              }
+            }
+
+      # Sans cette alerte, une ingestion cassée resterait silencieuse.
       - name: Signaler l'échec de l'ingestion
         if: failure()
         uses: actions/github-script@v7
         with:
           script: |
             const ouvertes = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: "open",
-              labels: "ingestion-echec",
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: "open", labels: "ingestion-echec",
             });
-            // Une seule issue ouverte à la fois : pas de spam quotidien.
             if (ouvertes.data.length > 0) {
               console.log("Issue d'échec déjà ouverte, rien à faire.");
               return;
             }
             await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: "🔴 Échec de l'ingestion quotidienne",
+              owner: context.repo.owner, repo: context.repo.repo,
+              title: "🔴 Échec de l'ingestion des données",
               labels: ["ingestion-echec"],
               body: [
                 "L'ingestion automatique a échoué : les données ne sont plus à jour.",
@@ -166,9 +188,9 @@ jobs:
                 `- Run : ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
                 "",
                 "**Causes fréquentes :**",
-                "- Source Sackmann indisponible ou schéma CSV modifié",
-                "- Contrôle de non-régression déclenché (chute > 10 % du volume)",
-                "- Permissions Actions repassées en lecture seule",
+                "- tennis-data.co.uk et ESPN injoignables en même temps",
+                "- Format d'une source modifié (schéma, > 10 % de joueurs inconnus)",
+                "- Contrôle de non-régression (chute de volume, dernier match qui recule)",
                 "",
                 "_Cette issue se referme automatiquement à la prochaine ingestion réussie._",
               ].join("\n"),
@@ -180,22 +202,16 @@ jobs:
         with:
           script: |
             const ouvertes = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: "open",
-              labels: "ingestion-echec",
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: "open", labels: "ingestion-echec",
             });
             for (const issue of ouvertes.data) {
               await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue.number,
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number,
                 body: "✅ Ingestion de nouveau fonctionnelle — clôture automatique.",
               });
               await github.rest.issues.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue.number,
-                state: "closed",
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issue.number, state: "closed",
               });
             }

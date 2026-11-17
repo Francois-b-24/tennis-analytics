@@ -58,6 +58,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="N'interroge aucune source récente : reconstruit depuis l'archive seule.",
     )
     parser.add_argument(
+        "--state-dir",
+        type=Path,
+        default=None,
+        help="Dossier d'état entre exécutions (défaut : data/state).",
+    )
+    parser.add_argument(
         "--skip-build",
         action="store_true",
         help="Ne pas reconstruire les tables processed.",
@@ -104,6 +110,8 @@ def write_metadata(project_root: Path, matches: pd.DataFrame, report: dict) -> P
         ),
         "provisional_matches": int((sources == "espn").sum()) if sources is not None else 0,
         "archive_cutoff": report.get("cutoff", {}),
+        "tennis_data": report.get("tennis_data"),
+        "tennis_data_last_match": report.get("tennis_data_last_match", {}),
         "new_players": report.get("new_players", []),
         "espn_error": report.get("espn_error"),
     }
@@ -136,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
             if not args.offline:
                 from tennis_analytics.ingestion.recent import collect_recent
 
-                recent = collect_recent(project_root)
+                recent = collect_recent(project_root, state_dir=args.state_dir)
             matches = build_processed_tables(
                 project_root,
                 recent_matches=recent.matches if recent else None,

@@ -68,3 +68,7 @@ Thumbs.db
 
 # Notebooks checkpoints
 .ipynb_checkpoints/
+
+# État d'ingestion entre exécutions (publié dans la Release data-latest)
+data/state/
+data/processed/manifest.json

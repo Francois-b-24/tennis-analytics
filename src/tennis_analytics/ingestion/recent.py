@@ -122,15 +122,87 @@ def weekly_rankings(matches: pd.DataFrame) -> pd.DataFrame:
     return out.reset_index(drop=True)
 
 
-def collect_recent(project_root: Path, today: date | None = None) -> RecentData:
+#: Fichiers d'état conservés d'une exécution à l'autre.
+TD_MATCHES = "tennis_data_matches.parquet"
+TD_REFERENCES = "tennis_data_tournaments.parquet"
+TD_PLAYERS = "tennis_data_players.parquet"
+ESPN_MATCHES = "espn_matches.parquet"
+
+
+def _load_state(name: str, state_dir: Path, seed_dir: Path) -> pd.DataFrame | None:
+    """Lit un fichier d'état (exécution précédente) ou, à défaut, l'instantané versionné."""
+    for folder in (state_dir, seed_dir):
+        path = folder / name
+        if path.exists():
+            return pd.read_parquet(path)
+    return None
+
+
+def _save_state(frame: pd.DataFrame, name: str, *dirs: Path) -> None:
+    for folder in dirs:
+        folder.mkdir(parents=True, exist_ok=True)
+        frame.to_parquet(folder / name, index=False)
+
+
+def _as_int(frame: pd.DataFrame) -> pd.DataFrame:
+    out = frame.copy()
+    for col in ("match_date", "tourney_date", "winner_id", "loser_id", "match_num"):
+        if col in out.columns:
+            out[col] = out[col].astype("int64")
+    return out
+
+
+def merge_espn_history(previous: pd.DataFrame | None, latest: pd.DataFrame) -> pd.DataFrame:
+    """Cumule les résultats ESPN : la fenêtre de l'API ne couvre que 7 jours.
+
+    Un match vu lors d'une exécution précédente est conservé (jusqu'à sa
+    publication par tennis-data) ; la version la plus récente l'emporte.
+    """
+    frames = [f for f in (previous, latest) if f is not None and not f.empty]
+    if not frames:
+        return pd.DataFrame()
+    merged = _as_int(pd.concat(frames, ignore_index=True))
+    pair = [
+        f"{c}|{min(a, b)}|{max(a, b)}|{d}"
+        for c, a, b, d in zip(
+            merged["circuit"],
+            merged["winner_id"],
+            merged["loser_id"],
+            merged["match_date"],
+            strict=True,
+        )
+    ]
+    merged = merged.assign(_key=pair).drop_duplicates(subset=["_key"], keep="last")
+    return merged.drop(columns=["_key"]).reset_index(drop=True)
+
+
+def collect_recent(
+    project_root: Path,
+    today: date | None = None,
+    state_dir: Path | None = None,
+) -> RecentData:
     """Collecte et normalise les résultats postérieurs à l'archive.
 
+    tennis-data bloque les IP des serveurs d'intégration continue (Cloudflare,
+    HTTP 403). Quand il est injoignable, on réutilise le dernier instantané
+    réussi (`data/reference/recent/` ou l'état de l'exécution précédente) ;
+    ESPN apporte alors les résultats des derniers jours, cumulés d'une
+    exécution à l'autre.
+
+    Args:
+        project_root: Racine du dépôt.
+        today: Date de référence (tests).
+        state_dir: Dossier d'état entre exécutions (défaut : `data/state`).
+
     Raises:
-        SourceUnavailableError: tennis-data injoignable (source obligatoire).
+        SourceUnavailableError: Aucune source récente (ni tennis-data ni
+            instantané, ou ni tennis-data ni ESPN).
         RuntimeError: Trop de joueurs non reconnus (format de source modifié).
     """
     today = today or date.today()
     ref = project_root / "data" / "reference"
+    seed_dir = ref / "recent"
+    state_dir = state_dir or project_root / "data" / "state"
     archive = pd.read_parquet(ref / "sackmann_matches.parquet")
     archive_players = pd.read_parquet(ref / "sackmann_players.parquet")
     archive_rankings = pd.read_parquet(
@@ -147,40 +219,75 @@ def collect_recent(project_root: Path, today: date | None = None) -> RecentData:
         reference_date=int(today.strftime("%Y%m%d")),
     )
 
-    frames = tennis_data_loader.fetch_year_files(years)
-    name_map = tennis_data_loader.tournament_name_map(frames, archive)
-    td = pd.concat(
-        [
-            tennis_data_loader.to_matches(frame, circuit, matcher, name_map, cutoff[circuit])
-            for (circuit, _), frame in sorted(frames.items())
-        ],
-        ignore_index=True,
-    )
+    # 1. tennis-data : direct, sinon dernier instantané.
+    td_status = "live"
+    try:
+        frames = tennis_data_loader.fetch_year_files(years)
+        name_map = tennis_data_loader.tournament_name_map(frames, archive)
+        td = _as_int(
+            pd.concat(
+                [
+                    tennis_data_loader.to_matches(
+                        frame, circuit, matcher, name_map, cutoff[circuit]
+                    )
+                    for (circuit, _), frame in sorted(frames.items())
+                ],
+                ignore_index=True,
+            )
+        )
+        refs = espn_loader.reference_tournaments(frames, name_map)
+        td_players = matcher.new_players_frame()
+        # L'instantané versionné n'est rafraîchi que depuis un poste où le site répond.
+        _save_state(td, TD_MATCHES, state_dir, seed_dir)
+        _save_state(refs, TD_REFERENCES, state_dir, seed_dir)
+        _save_state(td_players, TD_PLAYERS, state_dir, seed_dir)
+    except SourceUnavailableError as exc:
+        td_status = "snapshot"
+        td = _load_state(TD_MATCHES, state_dir, seed_dir)
+        refs = _load_state(TD_REFERENCES, state_dir, seed_dir)
+        td_players = _load_state(TD_PLAYERS, state_dir, seed_dir)
+        if td is None or refs is None:
+            raise SourceUnavailableError(
+                f"tennis-data injoignable et aucun instantané : {exc}"
+            ) from exc
+        logger.warning("tennis-data injoignable ({}) : instantané réutilisé", exc)
+    td_players = td_players if td_players is not None else pd.DataFrame()
 
-    espn = pd.DataFrame()
+    # 2. ESPN : derniers jours, cumulés avec les exécutions précédentes.
     espn_error: str | None = None
+    espn_rankings = pd.DataFrame()
+    espn_latest = pd.DataFrame()
     try:
         events = espn_loader.fetch_events(today)
-        refs = espn_loader.reference_tournaments(frames, name_map)
-        espn = espn_loader.to_matches(events, matcher, refs, cutoff)
-    except (SourceUnavailableError, KeyError, ValueError, TypeError) as exc:
-        # ESPN est un complément : son absence ne doit pas bloquer l'ingestion.
+        espn_latest = espn_loader.to_matches(events, matcher, refs, cutoff)
+        espn_rankings = espn_loader.fetch_rankings(matcher, today)
+    except (SourceUnavailableError, AttributeError, KeyError, ValueError, TypeError) as exc:
         espn_error = str(exc)
-        logger.warning("ESPN indisponible, tennis-data seul : {}", exc)
+        logger.warning("ESPN indisponible : {}", exc)
+        if td_status == "snapshot":
+            raise SourceUnavailableError(
+                "Aucune source récente joignable (tennis-data et ESPN)"
+            ) from exc
+    espn = merge_espn_history(_load_state(ESPN_MATCHES, state_dir, state_dir), espn_latest)
 
-    frames_recent = [f for f in (td, espn) if not f.empty and "match_date" in f.columns]
-    recent = pd.concat(frames_recent, ignore_index=True)
-    for col in ("match_date", "tourney_date", "winner_id", "loser_id", "match_num"):
-        recent[col] = recent[col].astype("int64")
-    recent = drop_published_espn(recent)
+    frames_recent = [_as_int(f) for f in (td, espn) if not f.empty and "match_date" in f.columns]
+    recent = drop_published_espn(pd.concat(frames_recent, ignore_index=True))
+    if not espn.empty:
+        _save_state(recent.loc[recent["source"] == "espn", espn.columns], ESPN_MATCHES, state_dir)
     # Garde-fou de schéma : une source qui change de format doit faire échouer le job.
     recent = pd.DataFrame(MatchesSchema.validate(recent, lazy=True))
 
     known_ids = set(archive_players["player_id"])
     distinct = set(recent["winner_id"]) | set(recent["loser_id"])
-    new_players = matcher.new_players_frame()
+    new_players = pd.concat([td_players, matcher.new_players_frame()], ignore_index=True)
     if not new_players.empty:
-        new_players = new_players.loc[new_players["player_id"].isin(distinct)]
+        new_players = (
+            new_players.sort_values("name_first", key=lambda s: s.fillna("").str.len())
+            .drop_duplicates(subset=["player_id"], keep="last")
+            .loc[lambda f: f["player_id"].isin(distinct)]
+            .sort_values("player_id", kind="mergesort")
+            .reset_index(drop=True)
+        )
     new_share = len(distinct - known_ids) / max(len(distinct), 1)
     logger.info(
         "Joueurs récents : {} distincts, {} nouveaux ({:.1%})",
@@ -197,10 +304,14 @@ def collect_recent(project_root: Path, today: date | None = None) -> RecentData:
     all_players = pd.concat([archive_players, new_players], ignore_index=True)
     recent = enrich_players(recent, all_players)
     rankings = weekly_rankings(recent.loc[recent["source"] == "tennis-data"])
+    if not espn_rankings.empty:
+        rankings = pd.concat([rankings, espn_rankings], ignore_index=True)
 
     report = {
         "cutoff": {k: int(v) for k, v in cutoff.items()},
-        "rows": recent["source"].value_counts().to_dict(),
+        "tennis_data": td_status,
+        "tennis_data_last_match": {c: int(g["match_date"].max()) for c, g in td.groupby("circuit")},
+        "rows": {k: int(v) for k, v in recent["source"].value_counts().items()},
         "last_match_date": {c: int(g["match_date"].max()) for c, g in recent.groupby("circuit")},
         "new_players": sorted(
             f"{r.circuit} {r.name_first} {r.name_last}" for r in new_players.itertuples()

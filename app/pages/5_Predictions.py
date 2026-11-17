@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from components._bootstrap import data_key, init_app
+from components._bootstrap import data_key, init_app, processed_dir
 
 _ROOT, _CONNECTION = init_app(__file__)
 _DATA_KEY = data_key(_ROOT)
@@ -39,7 +39,7 @@ from components.widgets import (
 st.set_page_config(page_title="Prédictions — Tennis Analytics", layout="wide")
 inject_global_css()
 
-MODEL_PATH = str(_ROOT / "data" / "processed" / "models" / "logreg_calibrated.joblib")
+MODEL_PATH = str(processed_dir(_ROOT) / "models" / "logreg_calibrated.joblib")
 
 SURFACE_ELO_COL = {"Dur": "elo_hard", "Terre battue": "elo_clay", "Gazon": "elo_grass"}
 SURFACE_NORM = {"Dur": "hard", "Terre battue": "clay", "Gazon": "grass"}
